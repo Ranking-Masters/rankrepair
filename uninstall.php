@@ -67,6 +67,7 @@ wp_clear_scheduled_hook('rr_malware_scan_event');
 $tables = [
     $wpdb->prefix . 'rr_pagespeed_results',
     $wpdb->prefix . 'rr_meta_data',
+    $wpdb->prefix . 'rr_internal_links',
 ];
 
 foreach ($tables as $table) {
