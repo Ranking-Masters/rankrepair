@@ -23,9 +23,7 @@ services:
       WORDPRESS_DB_PASSWORD: wp
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DEBUG: 1
-      # Fouten loggen, niet tonen. Met schermuitvoer aan breekt de inlogpagina:
-      # de add-ons roepen __() aan bij het laden van de plugin, wat een notice
-      # geeft vóór de headers, en dan mislukt de redirect na het inloggen.
+      # Fouten in het log, niet op het scherm.
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_DEBUG_DISPLAY', false);
         define('WP_DEBUG_LOG', true);

@@ -438,7 +438,14 @@ class IL_Planner {
         }
         $cand['result_html'] = $built['html'];
 
-        $ctx['anchor_usage'] = IL_Profile::anchor_usage($cand['target_id'], $cand['anchor']);
+        // De applier zet deze twee zelf, omdat hij de suggestie die hij aan het
+        // toepassen is uit zijn eigen telling moet houden.
+        if (!isset($ctx['anchor_usage'])) {
+            $ctx['anchor_usage'] = IL_Profile::anchor_usage($cand['target_id'], $cand['anchor']);
+        }
+        if (!isset($ctx['anchor_claimed_by'])) {
+            $ctx['anchor_claimed_by'] = IL_Profile::anchor_claimed_by($cand['target_id'], $cand['anchor']);
+        }
 
         return IL_Gates::check($cand, $ctx);
     }

@@ -33,7 +33,7 @@ Vier principes, overgenomen uit het interne-linksysteem van `ferienhausniederlan
 |---|---|---|
 | Content-adapters | `class-il-content.php` + `adapters/` | elke editor uitlezen en terugschrijven via één interface |
 | Linkprofiel | `class-il-profile.php` | meet het profiel, levert de caps waar de gates op toetsen |
-| Gates | `class-il-gates.php` | 16 deterministische checks; wijst af met reden |
+| Gates | `class-il-gates.php` | 17 deterministische checks; wijst af met reden |
 | Planner | `class-il-planner.php` | genereert kandidaten (segment + anker + modus), laat gates beslissen |
 | Inserter | `class-il-inserter.php` | bouwt de nieuwe segment-HTML + integriteitscheck |
 | Applier | `class-il-applier.php` | schrijft weg, bewaart snapshot, draait terug |
@@ -97,10 +97,10 @@ Volgorde: goedkope structurele checks eerst, dan positie, dan redactioneel, dan 
 | G2 | Reeds gelinkt | bron linkt al naar doel |
 | G3 | Verboden context | anker valt binnen `<a>`, `<code>`, `<pre>`, `<script>`, `<style>`, shortcode of heading |
 | G4 | Anker verbatim | anker staat niet woordgrens-exact in het resultaat (voorkomt `Dev<a>enter</a>`) |
-| G5 | Ankervorm | 1–8 woorden, 3–80 tekens, geen kale URL, geen losse cijfers |
+| G5 | Ankervorm | 1–8 woorden, 3–80 tekens, geen kale URL, geen "klik hier", geen zinsbegin ("Hoe werkt", "zo belangrijk"), niet aflopend op een voegwoord, minstens twee inhoudswoorden — tenzij het exact het focus-keyword van het doel is |
 | G6 | Intro-blok | eerste alinea van de post |
 | G7 | Eerste zin | eerste zin van een alinea, tenzij die zin over het ankeronderwerp gaat |
-| G8 | Topic-match | gastzin deelt geen betekenisvol woord met anker of focus-keyword van het doel |
+| G8 | Gastzin | de zin is korter dan zes woorden, of deelt geen betekenisvol woord met het anker of het focus-keyword van het doel |
 | G9 | Eén per alinea | tweede toegevoegde link in hetzelfde segment |
 | G10 | Dichtheid | meer dan 1 interne link per 100 woorden, of meer dan N toevoegingen per post |
 | G11 | Anker-overoptimalisatie | dit doel heeft al ≥3 inkomende links met exact dit anker |
@@ -109,6 +109,13 @@ Volgorde: goedkope structurele checks eerst, dan positie, dan redactioneel, dan 
 | G14 | Geen nieuwe claims | toegevoegde woorden bevatten getallen, bedragen, data of superlatieven die niet in het origineel stonden |
 | G15 | Herschrijfbegrenzing | woordaantal buiten `[origineel-2, origineel+8]`, eindleesteken gewijzigd, em-dash-inkapseling, of tautologie (zelfde inhoudswoord ≥2× in de nieuwe zin) |
 | G16 | Integriteit | platte tekst vóór ≠ platte tekst ná, minus de toegestane toevoeging |
+| G17 | Anker-ambiguïteit | deze ankertekst wijst elders al naar een ándere pagina |
+
+G5, G8 en G17 danken hun huidige vorm aan een proefronde op de echte content van
+rankingmasters.nl. Zonder G17 wees "Google Ads" naar twee verschillende pagina's;
+zonder de aanscherping van G5 kwamen er ankers uit als "Hoe werkt" en "zo belangrijk".
+Die ronde bracht de ankerdiversiteit van 25% naar 61%, ten koste van ongeveer een
+derde van de suggesties — precies de ruil die hoort bij "liever minder en beter".
 
 G16 is de enige die ook nog draait op het moment van schrijven. Faalt die, dan slaat de applier de
 suggestie over en markeert hem `failed` met reden — er wordt niets weggeschreven.
@@ -120,7 +127,8 @@ oplossen en eindigen met een profiel dat er machinaal uitziet. `IL_Profile` meet
 
 - **spreiding** — aandeel van alle inkomende links dat naar de top 10% pagina's gaat;
 - **ankerdiversiteit** — per doel: unieke ankers ÷ inkomende links, en site-breed het aandeel
-  exact-match ankers;
+  exact-match ankers. De caps tellen ook nog niet toegepaste suggesties mee, anders bijten ze
+  pas tijdens het plaatsen en heeft iemand intussen zes keer hetzelfde voorstel beoordeeld;
 - **dichtheid** — interne links per 100 woorden per post, met een bovengrens;
 - **wederkerigheid** — aandeel A↔B-paren.
 

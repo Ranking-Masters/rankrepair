@@ -41,7 +41,6 @@ final class RankRepair {
 
     private function __construct() {
         $this->load_dependencies();
-        $this->register_addons();
         $this->init_hooks();
         $this->maybe_create_tables();
     }
@@ -71,8 +70,15 @@ final class RankRepair {
     /**
      * Register add-ons
      * Modulaire structuur: voeg hier nieuwe add-ons toe
+     *
+     * Draait op 'init' en niet eerder. De add-ons zetten in hun init() hun naam
+     * en omschrijving met __(), en WordPress 6.7 waarschuwt terecht wanneer een
+     * textdomain vóór 'init' wordt geladen. Met WP_DEBUG_DISPLAY aan kwam die
+     * notice vóór de headers en brak daardoor de redirect na het inloggen.
+     * Alle hooks die de add-ons zelf zetten (wp_ajax_*, wp_head, upload-filters,
+     * mediakolommen) vuren later, dus dit verandert verder niets.
      */
-    private function register_addons() {
+    public function register_addons() {
         $addon_files = [
             'meta-manager'      => RR_PLUGIN_DIR . 'addons/meta-manager/class-addon-meta-manager.php',
             'structured-data'   => RR_PLUGIN_DIR . 'addons/structured-data/class-addon-structured-data.php',
@@ -124,7 +130,10 @@ final class RankRepair {
 
         add_action('admin_menu', [$this, 'register_admin_menu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
-        add_action('init', [$this, 'load_textdomain']);
+
+        // Volgorde telt: eerst de vertalingen, dan pas de add-ons die ze gebruiken.
+        add_action('init', [$this, 'load_textdomain'], 1);
+        add_action('init', [$this, 'register_addons'], 5);
 
         // Paginatie suffix voor meta titels
         add_filter('wpseo_title',              [$this, 'apply_pagination_suffix'], 20);
@@ -603,7 +612,10 @@ function rr_ai_complete($prompt, $args = []) {
     $model    = trim(get_option('rr_ai_model', ''));
 
     if ($provider === 'openrouter') {
-        if (empty($model)) { $model = 'google/gemini-2.0-flash-001'; }
+        // Gecontroleerd op 15 sep 2026: google/gemini-2.0-flash-001 bestaat niet
+        // meer op OpenRouter en gaf "No endpoints found". Wie het modelveld leeg
+        // liet kreeg dus een foutmelding in plaats van een resultaat.
+        if (empty($model)) { $model = 'google/gemini-2.5-flash-lite'; }
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', [
             'headers' => [
                 'Content-Type'  => 'application/json',

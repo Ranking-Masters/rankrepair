@@ -37,6 +37,20 @@ class IL_Gates {
         '/\bbenieuwd\s+naar\b/iu',
     ];
 
+    /**
+     * Woorden waar een zin mee begint, niet een ankertekst.
+     *
+     * Woordgroepen uit een titel leveren anders brokstukken op: "Hoe werkt",
+     * "zo belangrijk", "hoe gebruik". Grammaticaal incompleet, en voor een lezer
+     * zegt het niets over waar de link heen gaat.
+     */
+    private static $anchor_openers = [
+        'hoe', 'wat', 'waarom', 'wanneer', 'welke', 'wie', 'waar', 'waarmee', 'waardoor',
+        'zo', 'dus', 'want', 'omdat', 'terwijl', 'zodat', 'maar', 'echter', 'toch',
+        'werkt', 'werken', 'doe', 'doet', 'maak', 'maakt', 'krijg', 'krijgt', 'zorg', 'zorgt',
+        'gebruik', 'gebruikt', 'kies', 'kiest', 'begin', 'begint', 'ontdek', 'leer',
+    ];
+
     /** Woorden die een claim toevoegen die er niet stond. */
     private static $superlatives = [
         'beste', 'grootste', 'goedkoopste', 'snelste', 'mooiste', 'nummer 1', 'meest',
@@ -66,6 +80,7 @@ class IL_Gates {
             'G14' => 'gate_no_new_claims',
             'G15' => 'gate_rewrite_limits',
             'G16' => 'gate_integrity',
+            'G17' => 'gate_anchor_ambiguity',
         ];
 
         foreach ($checks as $id => $method) {
@@ -152,9 +167,32 @@ class IL_Gates {
         if (in_array(IL_Text::normalize_anchor($anchor), self::$forbidden_anchors, true)) {
             return sprintf(__('"%s" zegt niets over de bestemming', 'rankrepair'), $anchor);
         }
-        // Alleen stopwoorden is nooit een betekenisvol anker.
-        if (count(IL_Text::remove_stopwords(IL_Text::tokenize($anchor))) === 0) {
+        $inhoud = IL_Text::remove_stopwords(IL_Text::tokenize($anchor));
+        if (count($inhoud) === 0) {
             return __('ankertekst bestaat alleen uit stopwoorden', 'rankrepair');
+        }
+
+        // Het focus-keyword van de doelpagina mag altijd, ook als het kort is —
+        // dat is per definitie waar die pagina over gaat.
+        $kw = isset($ctx['target_keyword']) ? IL_Text::normalize_anchor($ctx['target_keyword']) : '';
+        if ($kw !== '' && IL_Text::normalize_anchor($anchor) === $kw) {
+            return null;
+        }
+
+        $woorden = preg_split('/\s+/u', $anchor);
+        $eerste  = mb_strtolower($woorden[0], 'UTF-8');
+        $laatste = mb_strtolower(rtrim($woorden[count($woorden) - 1], ',.:;!?'), 'UTF-8');
+
+        if (in_array($eerste, self::$anchor_openers, true)) {
+            return sprintf(__('"%s" is een zinsbegin, geen ankertekst', 'rankrepair'), $anchor);
+        }
+        // Zelfde probleem aan de achterkant: "google ads en waarom" loopt door
+        // in de zin en is als losse verwijzing onaf.
+        if (in_array($laatste, self::$anchor_openers, true) || IL_Text::is_stopword($laatste)) {
+            return sprintf(__('"%s" loopt halverwege een zin af', 'rankrepair'), $anchor);
+        }
+        if (count($inhoud) < 2) {
+            return sprintf(__('"%s" is te weinig om een bestemming mee aan te duiden', 'rankrepair'), $anchor);
         }
         return null;
     }
@@ -207,6 +245,11 @@ class IL_Gates {
         $host = self::host_sentence($c);
         if ($host === '') {
             return null;
+        }
+        // Een losse kopregel of bijschrift van een paar woorden is geen zin om
+        // een link aan op te hangen, ook al matcht het onderwerp.
+        if (IL_Text::word_count($host) < 6) {
+            return __('de zin is te kort om een link te dragen', 'rankrepair');
         }
         $terms = isset($ctx['target_terms']) ? (array) $ctx['target_terms'] : [];
         if (empty($terms)) {
@@ -353,6 +396,25 @@ class IL_Gates {
             if (strpos($after, $stem) !== 0) {
                 return __('een bijzin hoort achter de bestaande zin te komen, niet ervoor', 'rankrepair');
             }
+        }
+        return null;
+    }
+
+    /* ----------------------------------------------------------------- G17 */
+
+    /**
+     * Eén ankertekst, één bestemming.
+     *
+     * Staat "Google Ads" in het ene artikel naar pagina A en in het volgende naar
+     * pagina B, dan weet een lezer niet waar hij op klikt en weet een zoekmachine
+     * niet welke pagina het onderwerp draagt. Dit kwam boven bij het draaien op
+     * echte content: zes van de acht voorstellen gebruikten hetzelfde anker, naar
+     * twee verschillende pagina's.
+     */
+    private static function gate_anchor_ambiguity(array $c, array $ctx) {
+        $ander = isset($ctx['anchor_claimed_by']) ? (int) $ctx['anchor_claimed_by'] : 0;
+        if ($ander > 0) {
+            return sprintf(__('deze ankertekst wijst elders al naar pagina #%d', 'rankrepair'), $ander);
         }
         return null;
     }

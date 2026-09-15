@@ -16,8 +16,9 @@ if (!defined('ABSPATH')) {
 
 class IL_Profile {
 
-    private static $anchor_cache   = [];
-    private static $wordcount_cache = [];
+    private static $anchor_cache       = [];
+    private static $anchor_owner_cache = [];
+    private static $wordcount_cache    = [];
 
     private static function table() {
         global $wpdb;
@@ -153,9 +154,23 @@ class IL_Profile {
         }
 
         if (!isset(self::$anchor_cache[$target_id])) {
-            $table = self::table();
-            $rows  = $wpdb->get_col($wpdb->prepare("SELECT anchor FROM $table WHERE target_id = %d", $target_id));
-            $map   = [];
+            $map = [];
+
+            // Bestaande links uit de graaf …
+            $rows = $wpdb->get_col($wpdb->prepare(
+                'SELECT anchor FROM ' . self::table() . ' WHERE target_id = %d',
+                $target_id
+            ));
+
+            // … én wat er in deze ronde al klaarstaat. Zonder dat tweede deel
+            // bijt de cap pas tijdens het plaatsen, en heeft iemand intussen zes
+            // keer hetzelfde voorstel zitten beoordelen.
+            $rows = array_merge($rows, $wpdb->get_col($wpdb->prepare(
+                'SELECT anchor FROM ' . IL_Suggestions::table() . '
+                 WHERE target_id = %d AND status IN (%s, %s)',
+                $target_id, IL_Suggestions::STATUS_PENDING, IL_Suggestions::STATUS_APPROVED
+            )));
+
             foreach ($rows as $a) {
                 $k = IL_Text::normalize_anchor($a);
                 if ($k === '') { continue; }
@@ -166,6 +181,47 @@ class IL_Profile {
 
         $map = self::$anchor_cache[$target_id];
         return isset($map[$needle]) ? $map[$needle] : 0;
+    }
+
+    /**
+     * Wijst deze ankertekst elders al naar een ándere pagina?
+     *
+     * Eén ankertekst hoort bij één bestemming. Staat "Google Ads" in het ene
+     * artikel naar pagina A en in het volgende naar pagina B, dan weet een lezer
+     * niet waar hij op klikt en weet een zoekmachine niet welke pagina het
+     * onderwerp draagt. Dit is de belangrijkste knop voor een profiel dat als
+     * redactie leest in plaats van als generator.
+     *
+     * @return int het andere doel, of 0
+     */
+    public static function anchor_claimed_by($target_id, $anchor) {
+        global $wpdb;
+        $needle = IL_Text::normalize_anchor($anchor);
+        if ($needle === '') {
+            return 0;
+        }
+
+        if (!isset(self::$anchor_owner_cache[$needle])) {
+            $owner = (int) $wpdb->get_var($wpdb->prepare(
+                'SELECT target_id FROM ' . self::table() . '
+                 WHERE LOWER(TRIM(anchor)) = %s LIMIT 1',
+                $needle
+            ));
+            if ($owner === 0) {
+                $owner = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT target_id FROM ' . IL_Suggestions::table() . '
+                     WHERE LOWER(TRIM(anchor)) = %s AND status IN (%s, %s, %s) LIMIT 1',
+                    $needle,
+                    IL_Suggestions::STATUS_PENDING,
+                    IL_Suggestions::STATUS_APPROVED,
+                    IL_Suggestions::STATUS_APPLIED
+                ));
+            }
+            self::$anchor_owner_cache[$needle] = $owner;
+        }
+
+        $owner = self::$anchor_owner_cache[$needle];
+        return ($owner && $owner !== (int) $target_id) ? $owner : 0;
     }
 
     /** Aantal woorden in de lopende tekst van een post. */
@@ -200,7 +256,8 @@ class IL_Profile {
     }
 
     public static function flush() {
-        self::$anchor_cache    = [];
-        self::$wordcount_cache = [];
+        self::$anchor_cache       = [];
+        self::$anchor_owner_cache = [];
+        self::$wordcount_cache    = [];
     }
 }

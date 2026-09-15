@@ -54,6 +54,10 @@ class IL_Suggester {
                 'status'          => IL_Suggestions::STATUS_PENDING,
             ]);
             $created++;
+            // De caps lezen uit de suggestietabel; die is nu veranderd. Zonder
+            // deze reset blijft de ankereigenaar op 'nog vrij' staan en wijst
+            // dezelfde tekst alsnog naar meerdere pagina's.
+            IL_Profile::flush();
         }
 
         $rows = IL_Suggestions::query([

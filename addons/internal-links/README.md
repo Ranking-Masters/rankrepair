@@ -21,7 +21,7 @@ scan ──► index ──► planner ──► gates ──► suggestie ─�
 | `class-il-index.php` | woordtelling per post in postmeta, zodat relevantie niet elke keer alles opnieuw inleest |
 | `class-il-matcher.php` | TF-IDF + cosine, met een boost op een gedeeld focus-keyword |
 | `class-il-planner.php` | kiest bron, alinea, ankertekst en modus |
-| `class-il-gates.php` | 16 deterministische controles; wijst af met reden |
+| `class-il-gates.php` | 17 deterministische controles; wijst af met reden |
 | `class-il-inserter.php` | bouwt de nieuwe alinea-HTML, en haalt een link er ook weer uit |
 | `class-il-applier.php` | schrijft weg, bewaart een snapshot, draait terug |
 | `class-il-content.php` + `adapters/` | vertaalt elke editor van en naar segmenten |

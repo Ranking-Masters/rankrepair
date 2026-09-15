@@ -159,6 +159,34 @@ gate_rejects(
     'G5 blokkeert een ankertekst van negen woorden'
 );
 
+// Woordgroepen uit een titel leveren makkelijk brokstukken op. Deze drie kwamen
+// letterlijk uit een proefronde op de echte site.
+
+$vraag = '<p>Autoriteit kost tijd. Hoe werkt dat dan precies in de praktijk van alledag, vraagt men zich af.</p>';
+gate_rejects(
+    judge_wrap($vraag, 'Hoe werkt', [], ['target_terms' => ['werkt'], 'target_keyword' => '']),
+    'G5',
+    'G5 blokkeert een anker dat met een vraagwoord begint'
+);
+
+$kort = '<p>Autoriteit kost tijd. Daarom is linkbuilding zo belangrijk voor elke site die wil groeien.</p>';
+gate_rejects(
+    judge_wrap($kort, 'zo belangrijk', [], ['target_terms' => ['belangrijk'], 'target_keyword' => '']),
+    'G5',
+    'G5 blokkeert een anker dat met een bijwoord begint'
+);
+
+$staart = '<p>Autoriteit kost tijd. Je vraagt je af wat linkbuilding doet en waarom dat zo lang duurt.</p>';
+gate_rejects(
+    judge_wrap($staart, 'linkbuilding doet en', [], ['target_terms' => ['linkbuilding'], 'target_keyword' => '']),
+    'G5',
+    'G5 blokkeert een anker dat op een voegwoord eindigt'
+);
+
+// Maar het focus-keyword van de doelpagina mag altijd, ook als het kort is.
+ok(judge_wrap($goed, 'linkbuilding', [], ['target_keyword' => 'linkbuilding'])['ok'],
+   'G5 laat het focus-keyword van het doel door, ook al is het één woord');
+
 /* =============================================================== G6 intro */
 
 gate_rejects(
@@ -169,10 +197,10 @@ gate_rejects(
 
 /* ========================================================= G7 eerste zin */
 
-$eerste = '<p>Wie aan linkbuilding doet heeft geduld nodig. De rest van deze alinea gaat over iets heel anders, '
-        . 'namelijk de indeling van je navigatie en hoe je die opbouwt.</p>';
+$eerste = '<p>Interne structuur bepaalt hoeveel geduld je nodig hebt bij dit werk. De rest van deze alinea gaat '
+        . 'over iets heel anders, namelijk de indeling van je navigatie en hoe je die opbouwt.</p>';
 gate_rejects(
-    judge_wrap($eerste, 'linkbuilding', [], ['target_terms' => ['linkbuilding'], 'target_keyword' => '']),
+    judge_wrap($eerste, 'Interne structuur', [], ['target_terms' => ['structuur'], 'target_keyword' => '']),
     'G7',
     'G7 blokkeert een link in de eerste zin van een alinea bij zwakke topic-match'
 );
@@ -194,6 +222,14 @@ gate_rejects(
     ),
     'G8',
     'G8 blokkeert een anker dat aan een inhoudelijk losstaande zin wordt gehangen'
+);
+
+// Een losse kopregel is geen zin om een link aan op te hangen.
+$fragment = '<p>Autoriteit kost tijd en aandacht en volhouden, dat weet elke marketeer. Linkbuilding uitgelegd.</p>';
+gate_rejects(
+    judge_wrap($fragment, 'Linkbuilding uitgelegd'),
+    'G8',
+    'G8 blokkeert een link in een zin van drie woorden'
 );
 
 /* ==================================================== G9 één per alinea */
@@ -320,6 +356,18 @@ gate_rejects(
     'G15',
     'G15 blokkeert een anker tussen gedachtestreepjes'
 );
+
+/* =================================================== G17 anker-ambiguïteit */
+
+// Kwam boven bij het draaien op echte content: hetzelfde anker naar twee pagina's.
+gate_rejects(
+    judge_wrap($goed, 'linkbuilding', [], ['anchor_claimed_by' => 99]),
+    'G17',
+    'G17 blokkeert een ankertekst die elders al naar een andere pagina wijst'
+);
+
+ok(judge_wrap($goed, 'linkbuilding', [], ['anchor_claimed_by' => 0])['ok'],
+   'G17 laat een ankertekst door die nog geen andere bestemming heeft');
 
 /* ========================================================= G16 integriteit */
 

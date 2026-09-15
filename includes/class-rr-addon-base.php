@@ -24,11 +24,14 @@ abstract class RR_Addon_Base {
     abstract public function render_page();
     abstract public function get_stats();
 
+    /**
+     * Meld deze add-on aan bij de plugin.
+     *
+     * Rechtstreeks, niet via 'plugins_loaded': de add-ons worden sinds 1.9.0 op
+     * 'init' geladen, en dan is die hook allang voorbij.
+     */
     protected function register() {
-        add_action('plugins_loaded', function() {
-            $plugin = RankRepair::get_instance();
-            $plugin->register_addon($this->slug, $this);
-        }, 20);
+        RankRepair::get_instance()->register_addon($this->slug, $this);
     }
 
     public function enqueue_assets($hook) {

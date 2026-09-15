@@ -243,7 +243,20 @@ class IL_Applier {
             }
         }
 
+        // De suggestie zelf staat als 'goedgekeurd' in de tabel en telt dus mee in
+        // zijn eigen ankerlimiet. Eén eraf, anders blokkeert elke suggestie zichzelf.
+        $anchor_usage = IL_Profile::anchor_usage((int) $row['target_id'], $row['anchor']);
+        if (in_array($row['status'], [IL_Suggestions::STATUS_PENDING, IL_Suggestions::STATUS_APPROVED], true)) {
+            $anchor_usage = max(0, $anchor_usage - 1);
+        }
+
+        // Om dezelfde reden telt de suggestie ook niet als 'die ankertekst is al
+        // door een andere pagina geclaimd' wanneer zíj degene is die hem claimt.
+        $claimed = IL_Profile::anchor_claimed_by((int) $row['target_id'], $row['anchor']);
+
         return [
+            'anchor_usage'         => $anchor_usage,
+            'anchor_claimed_by'    => $claimed,
             'existing_targets'     => IL_Graph_Scanner::targets_of((int) $row['source_id']),
             'added_in_source'      => max(0, $load['count'] - 1),
             'added_per_segment'    => $per_segment,

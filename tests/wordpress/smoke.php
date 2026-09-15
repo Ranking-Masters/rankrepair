@@ -53,10 +53,23 @@ $EL_KNOP   = post_by_title('Aanpak in het kort');
 check($TARGET && $GUTENBERG && $CLASSIC && $ELEMENTOR, 'testcontent gevonden (draai eerst seed.php)');
 if (!$TARGET) { exit(1); }
 
-// Schone lei.
+/* Schone lei — deze test moet twee keer achter elkaar hetzelfde doen.
+   Geplaatste links terugdraaien, de suggestietabel legen (de caps lezen eruit,
+   dus restanten van een vorige ronde veranderen de uitkomst) en pagina's die een
+   eerdere ronde in de prullenbak zette weer publiceren. */
+global $wpdb;
+
 foreach (IL_Suggestions::query(['status' => IL_Suggestions::STATUS_APPLIED]) as $r) {
     IL_Applier::undo($r['id']);
 }
+$wpdb->query('TRUNCATE TABLE ' . IL_Suggestions::table());
+
+foreach (get_posts(['post_type' => ['post','page'], 'post_status' => 'trash', 'numberposts' => -1]) as $p) {
+    wp_untrash_post($p->ID);
+    wp_update_post(['ID' => $p->ID, 'post_status' => 'publish']);
+}
+
+IL_Profile::flush();
 IL_Graph_Scanner::reset();
 foreach (array_chunk(IL_Graph_Scanner::all_post_ids(), 25) as $chunk) {
     IL_Graph_Scanner::scan_batch($chunk);
@@ -161,6 +174,7 @@ foreach ($slecht as $naam => $na) {
         IL_Applier::undo($r['id']);
     }
     IL_Graph_Scanner::flush();
+    IL_Profile::flush();
 
     $id = IL_Suggestions::insert([
         'target_id' => $TARGET, 'source_id' => $GUTENBERG, 'score' => 0.5,
@@ -172,6 +186,11 @@ foreach ($slecht as $naam => $na) {
     $r = IL_Applier::apply($id);
     check(!$r['ok'], "geweigerd: $naam");
     check(plain_of($GUTENBERG) === $voor, "content onveranderd na weigering ($naam)");
+
+    // Weg ermee: een blijvende rij op dezelfde alinea blokkeert het volgende
+    // geval via gate G9, en dan test je die gate in plaats van deze.
+    $wpdb->delete(IL_Suggestions::table(), ['id' => $id], ['%d']);
+    IL_Profile::flush();
 }
 
 /* ------------------------------ en de goede herschrijving mag er wél door */
@@ -196,6 +215,14 @@ IL_Applier::undo($id);
 check(plain_of($GUTENBERG) === $voor, 'ook een herschrijving is exact terug te draaien');
 
 /* ------------------------------------------------------------------ slot */
+
+/* Opruimen: laat de installatie achter zoals we hem aantroffen. */
+foreach (IL_Suggestions::query(['status' => IL_Suggestions::STATUS_APPLIED]) as $r) {
+    IL_Applier::undo($r['id']);
+}
+foreach ([$KNOP, $EL_KNOP] as $id) {
+    if ($id && get_post_status($id) === 'trash') { wp_untrash_post($id); wp_update_post(['ID'=>$id,'post_status'=>'publish']); }
+}
 
 echo "\n";
 if ($GLOBALS['il_failures'] > 0) {

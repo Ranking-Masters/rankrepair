@@ -31,9 +31,7 @@ if ! docker compose exec -T cli wp core is-installed 2>/dev/null; then
         --admin_email=test@example.com --skip-email >/dev/null
 fi
 
-# Fouten loggen in plaats van tonen. Met schermuitvoer aan breekt de inlogpagina:
-# de add-ons roepen __() aan bij het laden van de plugin, wat een notice geeft
-# vóór de headers, en dan mislukt de redirect na het inloggen.
+# Fouten in het log, niet op het scherm — anders lopen ze door de testuitvoer heen.
 docker compose exec -T cli wp config set WP_DEBUG_DISPLAY false --raw >/dev/null
 docker compose exec -T cli wp config set WP_DEBUG_LOG true --raw >/dev/null
 
@@ -46,6 +44,12 @@ if [ "$(docker compose exec -T cli wp post list --post_type=post --format=count)
 fi
 
 echo "› integratietest"
+# De exitcode moet die van smoke.php zijn, niet die van grep — anders meldt een
+# falende testronde alsnog succes.
+set +e
 docker compose exec -T cli wp eval-file \
     wp-content/plugins/rankrepair/tests/wordpress/smoke.php 2>&1 \
     | grep -v "_load_textdomain_just_in_time"
+status=${PIPESTATUS[0]}
+set -e
+exit "$status"
