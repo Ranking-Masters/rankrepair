@@ -37,7 +37,6 @@ Vier principes, overgenomen uit het interne-linksysteem van `ferienhausniederlan
 | Planner | `class-il-planner.php` | genereert kandidaten (segment + anker + modus), laat gates beslissen |
 | Inserter | `class-il-inserter.php` | bouwt de nieuwe segment-HTML + integriteitscheck |
 | Applier | `class-il-applier.php` | schrijft weg, bewaart snapshot, draait terug |
-| Wachtrij | `class-il-queue.php` | batchverwerking, hervatbaar |
 | 3D-graaf | `vendor/3d-force-graph.min.js` | Data-scherm, zelfde bibliotheek als Ferienhaus |
 
 ## 3. Content-adapters — "één slimme gedeelde manier"
@@ -68,7 +67,7 @@ Meegeleverd:
 | `Gutenberg` | `parse_blocks(post_content)`, recursief door `innerBlocks` | `serialize_blocks()` | blok-pad `b:2.1` |
 | `Classic` | `post_content` als HTML/`wpautop`-alinea's | `post_content` | alinea-index `c:3` |
 | `Elementor` | `_elementor_data` JSON, widgets `text-editor` / `heading` / `theme-post-content` | `_elementor_data` + cache leegmaken | element-id + veld `e:4a7f1c2.editor` |
-| `Raw` (fallback) | hele `post_content` als één segment | `post_content` | `r:0` |
+(Classic is tevens de vangnet-adapter: hij herkent altijd, dus een pagina valt nooit buiten de boot.)
 
 Uitbreidbaar via `apply_filters('rr_il_content_adapters', $classes)` — zo kan er later een
 adapter bij voor WPBakery, Divi of een ACF-veld zonder dat de plaatsingslogica wijzigt.
@@ -140,7 +139,9 @@ links — die heeft autoriteit over en linkbudget vrij.
      tekst blijft staan. Werkt ook als de pagina daarna is bewerkt.
    - **volledig**: snapshot terugzetten, alleen als de hash nog klopt.
 
-Batches lopen via `IL_Queue`: één AJAX-call per item, hervatbaar, met per item een status en reden.
+Batches hebben geen eigen wachtrij nodig: de status in `wp_rr_il_suggestions` *is* de wachtrij.
+De browser haalt de goedgekeurde id's op en doet één AJAX-call per stuk, met per item een resultaat
+en een reden. Onderbreken kan altijd; wat al geplaatst is blijft staan, de rest houdt zijn status.
 Geen cron in deze versie — je wilt erbij zitten als een tool 500 pagina's aanpast.
 
 ## 8. UI
