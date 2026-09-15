@@ -42,12 +42,27 @@
             });
             $(document).on('click', '.rr-il-anchor', function () { RRIL.editAnchor($(this)); });
 
+            document.addEventListener('visibilitychange', function () {
+                if (!RRIL.graph) { return; }
+                var opData = $('.rr-il-tab.is-active').data('tab') === 'data';
+                RRIL.grafPauze = document.hidden || !opData;
+                if (RRIL.grafPauze) { RRIL.graph.pauseAnimation(); }
+                else { RRIL.graph.resumeAnimation(); }
+            });
+
             RRIL.loadStats();
         },
 
         openTab: function (tab, reload) {
             $('.rr-il-tab').removeClass('is-active').filter('[data-tab="' + tab + '"]').addClass('is-active');
             $('.rr-il-panel').removeClass('is-active').filter('[data-panel="' + tab + '"]').addClass('is-active');
+
+            // De graaf rendert continu; dat hoeft niet als je er niet naar kijkt.
+            RRIL.grafPauze = (tab !== 'data');
+            if (RRIL.graph) {
+                if (tab === 'data') { RRIL.graph.resumeAnimation(); }
+                else { RRIL.graph.pauseAnimation(); }
+            }
 
             if (reload === false) { return; }
             if (tab === 'suggesties') { RRIL.loadSuggestions(); }
@@ -568,39 +583,95 @@
         renderGraph: function (data) {
             var el = document.getElementById('rr-il-graph');
             el.innerHTML = '';
+            RRIL.orbitGestart = false;
 
             if (!data.nodes.length) {
                 el.innerHTML = '<p class="rr-il-empty">Nog geen scan uitgevoerd.</p>';
                 return;
             }
 
-            var COLORS = { orphan: '#EF4444', thin: '#F59E0B', ok: '#10B981', hub: '#6366F1' };
+            // Fel op bijna-zwart. De staat van een pagina moet je van een meter
+            // afstand kunnen zien, en de lijnen moeten meedoen in plaats van
+            // wegvallen — die dragen het verhaal van het linkprofiel.
+            var KLEUR = {
+                orphan: '#FF3D6E',   // rood-roze: heeft niets
+                thin:   '#FFAE1A',   // amber: heeft één
+                ok:     '#14B8A6',   // turkoois, iets ingehouden — dit is de
+                                     // gezonde meerderheid en mag rustig zijn
+                hub:    '#B79CFF'    // violet, licht: knooppunten mogen oplichten
+            };
+            var ONZE = '#F472B6';    // magenta: door RankRepair geplaatst
+
+            var staatVan = {};
+            data.nodes.forEach(function (n) { staatVan[n.id] = n.state; });
 
             // Losse knopen trekken de graaf uit elkaar en maken het geheel
-            // onleesbaar. Standaard tonen we het deel dat verbonden is; de
-            // weespagina's staan in het overzicht, niet hier.
+            // onleesbaar. De weespagina's staan in het overzicht, niet hier.
             var verbonden = {};
             data.links.forEach(function (l) { verbonden[l.source] = true; verbonden[l.target] = true; });
             var nodes = data.nodes.filter(function (n) { return verbonden[n.id]; });
             var losse = data.nodes.length - nodes.length;
 
+            var idVan = function (x) { return (x && typeof x === 'object') ? x.id : x; };
+            var linkKleur = function (l) {
+                if (l.ours) { return ONZE; }
+                return KLEUR[staatVan[idVan(l.target)]] || '#64748B';
+            };
+
             try {
                 RRIL.graph = ForceGraph3D()(el)
-                    .backgroundColor('#0b1020')
+                    // Doorzichtig, zodat de CSS-gradiënt eronder het canvas
+                    // vult. Vlak zwart maakt een graaf plat; een diepte-verloop
+                    // geeft hem ruimte.
+                    .backgroundColor('rgba(0,0,0,0)')
                     .width(el.clientWidth)
                     .height(el.clientHeight)
+                    .showNavInfo(false)
                     .graphData({ nodes: nodes, links: data.links })
+
                     .nodeId('id')
                     .nodeVal('val')
-                    .nodeLabel(function (n) { return n.label + ' — ' + n.inbound + '× gelinkt'; })
-                    .nodeColor(function (n) { return COLORS[n.state] || '#9CA3AF'; })
-                    .linkColor(function (l) { return l.ours ? '#A855F7' : 'rgba(148,163,184,0.35)'; })
-                    .linkWidth(function (l) { return l.ours ? 1.2 : 0.4; })
-                    .linkDirectionalParticles(function (l) { return l.ours ? 2 : 0; })
-                    .linkDirectionalParticleWidth(1.2)
+                    .nodeRelSize(6)
+                    .nodeResolution(16)
+                    .nodeOpacity(0.95)
+                    .nodeLabel(function (n) {
+                        return '<div class="rr-il-tip"><strong>' + n.label + '</strong><br>' +
+                               n.inbound + ' inkomende links</div>';
+                    })
+                    .nodeColor(function (n) { return KLEUR[n.state] || '#94A3B8'; })
+
+                    // Gebogen lijnen lezen als een web in plaats van als een
+                    // bord spaghetti, en je ziet welke kant het op gaat.
+                    .linkCurvature(0.22)
+                    .linkOpacity(0.42)
+                    .linkColor(linkKleur)
+                    .linkWidth(function (l) { return l.ours ? 1.8 : 0.6; })
+                    .linkResolution(8)
+
+                    // Eén stroompje per link houdt het beeld levend zonder dat
+                    // het een kermis wordt; onze eigen links stromen sneller.
+                    .linkDirectionalParticles(function (l) { return l.ours ? 4 : 1; })
+                    .linkDirectionalParticleWidth(function (l) { return l.ours ? 2.2 : 1.1; })
+                    .linkDirectionalParticleSpeed(function (l) { return l.ours ? 0.012 : 0.004; })
+                    .linkDirectionalParticleColor(linkKleur)
+                    .linkDirectionalParticleResolution(6)
+
                     .onNodeClick(function (n) {
                         window.open(rrIL.editUrl + '?post=' + n.id + '&action=edit', '_blank');
+                    })
+                    // Pas als de simulatie is uitgezakt weten we hoe groot de
+                    // graaf geworden is; dáár stemmen we de camera op af.
+                    .onEngineStop(function () {
+                        if (RRIL.orbitGestart) { return; }
+                        RRIL.orbitGestart = true;
+                        RRIL.startOrbit(el, nodes);
                     });
+
+                // Meer lucht tussen de knopen: standaard klit alles samen tot
+                // één bal en dan zie je geen structuur meer.
+                RRIL.graph.d3Force('charge').strength(-150).distanceMax(600);
+                RRIL.graph.d3Force('link').distance(function (l) { return l.ours ? 30 : 55; });
+                RRIL.graph.d3VelocityDecay(0.3);
             } catch (e) {
                 el.innerHTML = '<p class="rr-il-empty rr-il-error">De graaf kon niet worden opgebouwd: ' +
                     RRIL.esc(e.message) + '</p>';
@@ -610,11 +681,55 @@
             var noot = nodes.length + ' verbonden pagina\'s, ' + data.links.length + ' links';
             if (losse) { noot += ' · ' + losse + ' weespagina\'s niet getoond'; }
             if (data.skipped) { noot += ' · ' + data.skipped + ' links naar andere post-types overgeslagen'; }
+            noot += ' — slepen om te draaien, scrollen om te zoomen, klik op een bol om de pagina te bewerken';
             $('#rr-il-graph-note').text(noot);
 
             $(window).off('resize.rril').on('resize.rril', function () {
                 if (RRIL.graph) { RRIL.graph.width(el.clientWidth).height(el.clientHeight); }
             });
+        },
+
+        // Laat de graaf vanzelf langzaam ronddraaien tot iemand hem zelf pakt.
+        // De bibliotheek heeft geen autoRotate, dus we bewegen de camera zelf —
+        // één cirkel in ongeveer anderhalve minuut, traag genoeg om niet af te leiden.
+        startOrbit: function (el, nodes) {
+            // Afstand afleiden uit hoe ver de knopen uit elkaar zijn gewaaierd,
+            // zodat het geheel past ongeacht de omvang van de site.
+            var verste = 0;
+            nodes.forEach(function (n) {
+                var d = Math.hypot(n.x || 0, n.y || 0, n.z || 0);
+                if (d > verste) { verste = d; }
+            });
+            var straal = Math.max(400, verste * 1.85);
+            var hoek = 0;
+            var hoogte = verste * 0.25;
+            var actief = true;
+
+            RRIL.graph.cameraPosition({ x: 0, y: hoogte, z: straal }, { x: 0, y: 0, z: 0 }, 1200);
+
+            var stop = function () {
+                if (!actief) { return; }
+                actief = false;
+                el.removeEventListener('pointerdown', stop);
+                el.removeEventListener('wheel', stop);
+            };
+            el.addEventListener('pointerdown', stop, { passive: true });
+            el.addEventListener('wheel', stop, { passive: true });
+            RRIL.stopOrbit = stop;
+
+            (function draai() {
+                if (!actief || !RRIL.graph) { return; }
+                requestAnimationFrame(draai);
+                // Niet rekenen als er niets te zien is: ander tabblad open, of
+                // het browservenster naar de achtergrond.
+                if (RRIL.grafPauze || document.hidden) { return; }
+                hoek += 0.00035;
+                RRIL.graph.cameraPosition({
+                    x: straal * Math.sin(hoek),
+                    y: hoogte,
+                    z: straal * Math.cos(hoek)
+                });
+            })();
         },
 
         renderMetrics: function (d) {

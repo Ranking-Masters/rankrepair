@@ -685,11 +685,11 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
                     <div id="rr-il-metrics"></div>
                     <h3><?php esc_html_e('Legenda', 'rankrepair'); ?></h3>
                     <ul class="rr-il-legend">
-                        <li><span class="rr-il-dot" style="background:#EF4444"></span><?php esc_html_e('orphan — 0 inkomend', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#F59E0B"></span><?php esc_html_e('thin — 1 inkomend', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#10B981"></span><?php esc_html_e('ok — 2 of meer', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#6366F1"></span><?php esc_html_e('hub — 8 of meer', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#A855F7"></span><?php esc_html_e('lijn — door RankRepair geplaatst', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#FF4D6D"></span><?php esc_html_e('orphan — 0 inkomend', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#FFB020"></span><?php esc_html_e('thin — 1 inkomend', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#2DD4BF"></span><?php esc_html_e('ok — 2 of meer', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#A78BFA"></span><?php esc_html_e('hub — 8 of meer', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#F472B6"></span><?php esc_html_e('lijn — door RankRepair geplaatst', 'rankrepair'); ?></li>
                     </ul>
                 </aside>
             </div>
