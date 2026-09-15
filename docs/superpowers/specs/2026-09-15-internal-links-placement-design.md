@@ -37,7 +37,7 @@ Vier principes, overgenomen uit het interne-linksysteem van `ferienhausniederlan
 | Planner | `class-il-planner.php` | genereert kandidaten (segment + anker + modus), laat gates beslissen |
 | Inserter | `class-il-inserter.php` | bouwt de nieuwe segment-HTML + integriteitscheck |
 | Applier | `class-il-applier.php` | schrijft weg, bewaart snapshot, draait terug |
-| 3D-graaf | `vendor/3d-force-graph.min.js` | Data-scherm, zelfde bibliotheek als Ferienhaus |
+| 3D-graaf | `lib/3d-force-graph.min.js` | Data-scherm, zelfde bibliotheek als Ferienhaus |
 
 ## 3. Content-adapters — "één slimme gedeelde manier"
 
@@ -132,7 +132,9 @@ links — die heeft autoriteit over en linkbudget vrij.
 
 1. Snapshot van `post_content` (+ `_elementor_data`) en een hash ervan in `wp_rr_il_suggestions`.
 2. Insert bouwen, G16 draaien.
-3. `wp_update_post()` — WordPress maakt zelf een revisie.
+3. Eerst `wp_save_post_revision()` op de huidige inhoud, dan de nieuwe content wegschrijven via
+   `$wpdb`. Niet via `wp_update_post()`: die draait kses over de content zodra de ingelogde gebruiker
+   geen `unfiltered_html` heeft, en dat sloopt het `data-rr-il`-attribuut waar het terugdraaien op leunt.
 4. Bij Elementor: `_elementor_data` bijwerken en de Elementor-CSS-cache van die post legen.
 5. Terugdraaien kan op twee manieren:
    - **chirurgisch** (voorkeur): zoek `data-rr-il="<uid>"` en haal alleen dat ene `<a>`-element weg,
