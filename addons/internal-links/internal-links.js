@@ -32,10 +32,13 @@
             RRIL.loadStats();
         },
 
-        openTab: function (tab) {
+        // `reload` staat standaard aan. Wie zelf al resultaten gaat tonen zet hem
+        // uit, anders overschrijft de lijst-fetch een tel later wat net getoond is.
+        openTab: function (tab, reload) {
             $('.rr-il-tab').removeClass('is-active').filter('[data-tab="' + tab + '"]').addClass('is-active');
             $('.rr-il-panel').removeClass('is-active').filter('[data-panel="' + tab + '"]').addClass('is-active');
 
+            if (reload === false) { return; }
             if (tab === 'suggesties') { RRIL.loadSuggestions(); }
             if (tab === 'data') { RRIL.loadData(); }
         },
@@ -127,7 +130,8 @@
             $btn.prop('disabled', true).text('Zoeken…');
             RRIL.post('rr_il_suggest', { target_id: id, force: 1 }, function (d) {
                 $btn.prop('disabled', false).text('Suggesties');
-                RRIL.openTab('suggesties');
+                RRIL.openTab('suggesties', false);
+                $('#rr-il-filter').val('pending');
                 RRIL.renderSuggestions(d.suggestions, d.rejected);
             }, function (msg) {
                 $btn.prop('disabled', false).text('Suggesties');
@@ -181,13 +185,13 @@
             }
 
             return '' +
-                '<article class="rr-il-card rr-il-card--' + RRIL.esc(r.status) + '" data-id="' + r.id + '">' +
+                '<article class="rr-il-card rr-il-card--' + RRIL.escAttr(r.status) + '" data-id="' + r.id + '">' +
                   '<header class="rr-il-card-head">' +
                     '<div>' +
                       '<span class="rr-il-status">' + RRIL.esc(RRIL.statusLabel(r.status)) + '</span> ' +
                       '<strong>' + RRIL.esc(r.source_title) + '</strong>' +
                       '<span class="rr-il-muted"> → </span>' +
-                      '<a href="' + RRIL.esc(r.target_url) + '" target="_blank" rel="noopener">' + RRIL.esc(r.target_title) + '</a>' +
+                      '<a href="' + RRIL.escAttr(r.target_url) + '" target="_blank" rel="noopener">' + RRIL.esc(r.target_title) + '</a>' +
                     '</div>' +
                     '<div class="rr-il-meta">' +
                       '<span title="Editor van de bronpagina">' + RRIL.esc(r.editor) + '</span> · ' +
@@ -204,7 +208,7 @@
                   (r.reason ? '<p class="rr-il-error">' + RRIL.esc(r.reason) + '</p>' : '') +
                   '<footer class="rr-il-card-foot">' +
                     actions +
-                    ' <a class="rr-il-editlink" href="' + RRIL.esc(r.source_edit || '#') + '" target="_blank" rel="noopener">Bron bewerken</a>' +
+                    ' <a class="rr-il-editlink" href="' + RRIL.escAttr(r.source_edit || '#') + '" target="_blank" rel="noopener">Bron bewerken</a>' +
                   '</footer>' +
                 '</article>';
         },
@@ -277,7 +281,10 @@
             $el.empty().append($input);
             $input.trigger('focus').trigger('select');
 
+            var afgerond = false;
             var done = function (save) {
+                if (afgerond) { return; }
+                afgerond = true;
                 var val = $input.val();
                 if (!save || val === old) { $el.text(old); return; }
                 $el.text('opslaan…');
@@ -312,14 +319,17 @@
                     RRIL.log('Niets goedgekeurd om te plaatsen.', 'muted');
                     return;
                 }
-                RRIL.applyNext(ids, 0, { ok: 0, fail: 0 });
+                RRIL.applyNext(ids, 0, { ok: 0, fail: 0, retry: 0 });
             });
         },
 
         applyNext: function (ids, i, tally) {
             if (i >= ids.length) {
                 $('#rr-il-apply-btn').prop('disabled', false);
-                RRIL.log('Klaar: ' + tally.ok + ' geplaatst, ' + tally.fail + ' overgeslagen.', tally.fail ? 'warn' : 'ok');
+                var slot = 'Klaar: ' + tally.ok + ' geplaatst';
+                if (tally.retry) { slot += ', ' + tally.retry + ' wachten op ruimte (blijven goedgekeurd staan)'; }
+                if (tally.fail) { slot += ', ' + tally.fail + ' mislukt'; }
+                RRIL.log(slot + '.', (tally.fail || tally.retry) ? 'warn' : 'ok');
                 RRIL.loadStats();
                 return;
             }
@@ -331,6 +341,9 @@
                 if (d.ok) {
                     tally.ok++;
                     RRIL.log('✓ ' + (row.source_title || '#' + ids[i]) + ' → ' + (row.target_title || '') + ' ("' + (row.anchor || '') + '")', 'ok');
+                } else if (d.retry) {
+                    tally.retry++;
+                    RRIL.log('· ' + (row.source_title || '#' + ids[i]) + ': ' + d.message + ' — blijft klaarstaan', 'muted');
                 } else {
                     tally.fail++;
                     RRIL.log('– ' + (row.source_title || '#' + ids[i]) + ': ' + d.message, 'warn');
@@ -397,8 +410,15 @@
                 .linkDirectionalParticles(function (l) { return l.ours ? 2 : 0; })
                 .linkDirectionalParticleWidth(1.2)
                 .onNodeClick(function (n) {
-                    window.open(rrAdmin.pluginUrl ? '/wp-admin/post.php?post=' + n.id + '&action=edit' : '#', '_blank');
+                    // Via de server aangeleverd: WordPress staat lang niet altijd
+                    // op /wp-admin/ (submap-installatie, multisite, verplaatst beheer).
+                    window.open(rrIL.editUrl + '?post=' + n.id + '&action=edit', '_blank');
                 });
+
+            // Bewust géén zoomToFit: op een site met veel weespagina's slingert de
+            // simulatie die ver uit elkaar, en "alles in beeld" betekent dan zo ver
+            // uitzoomen dat je niets meer onderscheidt. De standaardcamera geeft een
+            // bruikbaarder startbeeld; scrollen doet de rest.
 
             $(window).on('resize.rril', function () {
                 if (RRIL.graph) { RRIL.graph.width(el.clientWidth).height(el.clientHeight); }
@@ -490,6 +510,14 @@
 
         esc: function (s) {
             return $('<div>').text(s == null ? '' : String(s)).html();
+        },
+
+        // jQuery's text()/html() laat aanhalingstekens staan; in een attribuut
+        // breken die de tag open. Vandaar een eigen variant voor href en class.
+        escAttr: function (s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
     };
 

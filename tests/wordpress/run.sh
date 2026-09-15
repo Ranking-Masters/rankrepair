@@ -31,6 +31,12 @@ if ! docker compose exec -T cli wp core is-installed 2>/dev/null; then
         --admin_email=test@example.com --skip-email >/dev/null
 fi
 
+# Fouten loggen in plaats van tonen. Met schermuitvoer aan breekt de inlogpagina:
+# de add-ons roepen __() aan bij het laden van de plugin, wat een notice geeft
+# vóór de headers, en dan mislukt de redirect na het inloggen.
+docker compose exec -T cli wp config set WP_DEBUG_DISPLAY false --raw >/dev/null
+docker compose exec -T cli wp config set WP_DEBUG_LOG true --raw >/dev/null
+
 docker compose exec -T cli wp plugin activate rankrepair >/dev/null
 
 if [ "$(docker compose exec -T cli wp post list --post_type=post --format=count)" -lt 7 ]; then

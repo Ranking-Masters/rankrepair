@@ -10,12 +10,15 @@
  * Draaien: tests/wordpress/run.sh
  */
 
-$failures = 0;
+// Let op: wp eval-file voert dit bestand uit BINNEN een functie. Een gewone
+// $failures hier is dus lokaal, terwijl check() met `global` een andere variabele
+// zou ophogen — dan meldt de test ALL PASS terwijl er checks falen. Vandaar
+// overal expliciet $GLOBALS.
+$GLOBALS['il_failures'] = 0;
 
 function check($cond, $msg) {
-    global $failures;
     if ($cond) { echo "ok: $msg\n"; return; }
-    $failures++;
+    $GLOBALS['il_failures']++;
     fwrite(STDERR, "FAIL: $msg\n");
 }
 
@@ -44,6 +47,8 @@ $TARGET    = post_by_title('Interne links: de complete gids');
 $GUTENBERG = post_by_title('SEO basis voor beginners');
 $CLASSIC   = post_by_title('Contentstrategie in 2026');
 $ELEMENTOR = post_by_title('Technische SEO checklist');
+$KNOP      = post_by_title('Onze diensten op een rij');
+$EL_KNOP   = post_by_title('Aanpak in het kort');
 
 check($TARGET && $GUTENBERG && $CLASSIC && $ELEMENTOR, 'testcontent gevonden (draai eerst seed.php)');
 if (!$TARGET) { exit(1); }
@@ -66,7 +71,37 @@ foreach ([$GUTENBERG => 'gutenberg', $CLASSIC => 'classic', $ELEMENTOR => 'eleme
 }
 
 check(count(IL_Index::corpus()) === count(IL_Graph_Scanner::all_post_ids()), 'de index dekt elke gescande pagina');
+
+/* -------------------------------------------- links buiten de lopende tekst */
+
+// Een link in een knopblok of een Elementor-knop staat niet in de segmenten die
+// de adapters teruggeven. Telt hij niet mee, dan heet een gelinkte pagina ten
+// onrechte orphan én mag de planner er een tweede link vanaf dezelfde bron bij zetten.
+check(in_array($TARGET, IL_Graph_Scanner::targets_of($KNOP), true),
+      'een link in een Gutenberg-knopblok telt mee in de graaf');
+check(in_array($TARGET, IL_Graph_Scanner::targets_of($EL_KNOP), true),
+      'een link in een Elementor-knopwidget telt mee in de graaf');
+check(IL_Graph_Scanner::inbound_count($TARGET) === 2,
+      'het doel heeft twee inkomende links, allebei van buiten de lopende tekst');
+
+foreach (IL_Planner::candidate_sources(get_post($TARGET), 25) as $hit) {
+    check((int) $hit['id'] !== $KNOP && (int) $hit['id'] !== $EL_KNOP,
+          "kandidaat #{$hit['id']} is niet een bron die al via een knop linkt");
+}
+
+// Voor de rest van de test willen we het doel weer als orphan.
+foreach ([$KNOP, $EL_KNOP] as $id) { wp_trash_post($id); }
+IL_Graph_Scanner::reset();
+foreach (array_chunk(IL_Graph_Scanner::all_post_ids(), 25) as $chunk) {
+    IL_Graph_Scanner::scan_batch($chunk);
+}
 check(IL_Graph_Scanner::inbound_count($TARGET) === 0, 'het doel begint als orphan');
+
+// En een pagina in de prullenbak hoort geen bron meer te zijn.
+foreach (IL_Planner::candidate_sources(get_post($TARGET), 25) as $hit) {
+    check(get_post_status($hit['id']) === 'publish',
+          "kandidaat-bron #{$hit['id']} is gepubliceerd");
+}
 
 /* ------------------------------------------------- plannen en wegschrijven */
 
@@ -163,8 +198,8 @@ check(plain_of($GUTENBERG) === $voor, 'ook een herschrijving is exact terug te d
 /* ------------------------------------------------------------------ slot */
 
 echo "\n";
-if ($failures > 0) {
-    fwrite(STDERR, "$failures FAILURES\n");
+if ($GLOBALS['il_failures'] > 0) {
+    fwrite(STDERR, $GLOBALS['il_failures'] . " FAILURES\n");
     exit(1);
 }
 echo "ALL PASS\n";

@@ -123,5 +123,41 @@ seed_post('Een website migreren zonder verkeersverlies', gb([
     'Meet na de livegang dagelijks, niet wekelijks: problemen los je in de eerste week het goedkoopst op.',
 ]), 'website migreren');
 
+// ----------------------------------------------- BRON 4 — links buiten de tekst
+// Een knop en een tabel: precies de plekken die de adapters NIET als lopende
+// tekst lezen, maar die wel een echte interne link bevatten. Het doel mag
+// daardoor geen orphan meer heten, en er mag geen tweede link bij komen.
+$knop_bron = seed_post(
+    'Onze diensten op een rij',
+    "<!-- wp:paragraph -->\n<p>Van techniek tot content: dit is wat we doen en hoe we dat aanpakken voor onze klanten.</p>\n<!-- /wp:paragraph -->\n\n"
+    . "<!-- wp:buttons -->\n<div class=\"wp-block-buttons\"><!-- wp:button -->\n"
+    . "<div class=\"wp-block-button\"><a class=\"wp-block-button__link\" href=\"" . get_permalink($target) . "\">Lees de gids over interne links</a></div>\n"
+    . "<!-- /wp:button --></div>\n<!-- /wp:buttons -->\n\n"
+    . "<!-- wp:paragraph -->\n<p>Heb je vragen over een van deze onderdelen, dan denken we graag even mee voordat je iets vastlegt.</p>\n<!-- /wp:paragraph -->",
+    'diensten'
+);
+
+// En hetzelfde bij Elementor: een knop-widget met de URL in settings.link.url.
+$elementor_knop = [
+    ['id' => 'sec900', 'elType' => 'section', 'elements' => [
+        ['id' => 'col900', 'elType' => 'column', 'elements' => [
+            ['id' => 'wid900', 'elType' => 'widget', 'widgetType' => 'text-editor',
+             'settings' => ['editor' => '<p>Een korte introductie op deze pagina, zodat er ook lopende tekst is om mee te werken in de tests.</p>']],
+            ['id' => 'wid901', 'elType' => 'widget', 'widgetType' => 'button',
+             'settings' => ['text' => 'Naar de gids', 'link' => ['url' => get_permalink($target), 'is_external' => '']]],
+        ]],
+    ]],
+];
+$elementor_knop_bron = seed_post(
+    'Aanpak in het kort',
+    '<p>Deze pagina is met Elementor gemaakt.</p>',
+    'aanpak',
+    [
+        '_elementor_edit_mode' => 'builder',
+        '_elementor_data'      => wp_slash(wp_json_encode($elementor_knop)),
+    ]
+);
+
 echo "\nDoel (orphan): #$target\n";
 echo "Bronnen: gutenberg #$gb_source, classic #$classic_source, elementor #$elementor_source\n";
+echo "Links buiten de lopende tekst: knopblok #$knop_bron, elementor-knop #$elementor_knop_bron\n";

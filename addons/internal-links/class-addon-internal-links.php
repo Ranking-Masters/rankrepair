@@ -57,6 +57,7 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
         // De 3D-graaf is ~700 kB; die laden we pas als iemand het Data-tabblad opent.
         wp_localize_script('rr-internal-links', 'rrIL', [
             'graphLib' => $base . 'lib/3d-force-graph.min.js',
+            'editUrl'  => admin_url('post.php'),
             'config'   => IL_Config::all(),
             'hasAi'    => IL_Config::ai_available(),
             'i18n'     => [
@@ -208,7 +209,9 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
         $found = 0;
         foreach ($slice as $target_id) {
             $result = IL_Suggester::for_target($target_id, false);
-            $found += count($result['suggestions']);
+            // Alleen wat er in deze ronde bij kwam. Doelen die al suggesties
+            // hadden leveren niets nieuws op en horen niet mee te tellen.
+            $found += isset($result['created']) ? (int) $result['created'] : 0;
         }
 
         $next = $offset + count($slice);
@@ -385,6 +388,8 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
             'ok'      => $result['ok'],
             'message' => $result['message'],
             'gate'    => $result['gate'],
+            // true = geen ruimte in deze ronde, staat nog goedgekeurd klaar.
+            'retry'   => !empty($result['retry']),
             'row'     => $rows ? reset($rows) : null,
             'counts'  => IL_Suggestions::count_by_status(),
         ]);
@@ -488,11 +493,15 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
             wp_send_json_error(['message' => __('Nog geen suggesties. Genereer ze eerst.', 'rankrepair')]);
         }
 
-        $out = [['doel_id', 'doel_titel', 'bron_id', 'bron_titel', 'editor', 'score', 'modus', 'ankertekst', 'alinea', 'status', 'reden']];
-        foreach (IL_Suggester::decorate($rows) as $r) {
+        // Bewust NIET via decorate(): die parseert per rij de hele bronpagina om
+        // een voorbeeldzin te maken, en die staat niet eens in de CSV. Bij vijfduizend
+        // rijen zijn dat vijfduizend volledige content-parses in één request.
+        $out = [['doel_id', 'doel_titel', 'bron_id', 'bron_titel', 'score', 'modus', 'ankertekst', 'alinea', 'status', 'reden']];
+        foreach ($rows as $r) {
             $out[] = [
-                $r['target_id'], $r['target_title'], $r['source_id'], $r['source_title'],
-                $r['editor'], $r['score'], $r['mode'], $r['anchor'], $r['segment_ref'],
+                $r['target_id'], get_the_title((int) $r['target_id']),
+                $r['source_id'], get_the_title((int) $r['source_id']),
+                round((float) $r['score'], 4), $r['mode'], $r['anchor'], $r['segment_ref'],
                 $r['status'], $r['reason'],
             ];
         }
@@ -615,7 +624,8 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
         <section class="rr-il-panel" data-panel="toepassen">
             <div class="rr-il-notice">
                 <strong><?php esc_html_e('Wat hier gebeurt:', 'rankrepair'); ?></strong>
-                <?php esc_html_e('elke goedgekeurde suggestie gaat vlak voor het opslaan nog één keer door alle controles, wordt dan in de pagina gezet, en is daarna per stuk terug te draaien. WordPress bewaart van elke gewijzigde pagina een revisie.', 'rankrepair'); ?>
+                <?php esc_html_e('elke goedgekeurde suggestie gaat vlak voor het opslaan nog één keer door alle controles, wordt dan in de pagina gezet, en is daarna per stuk terug te draaien.', 'rankrepair'); ?>
+                <?php esc_html_e('Van elke wijziging bewaren we bovendien een kopie van de pagina zoals hij was. Bij Gutenberg en de klassieke editor legt WordPress daarnaast een revisie vast; bij Elementor niet, omdat revisies de postmeta waar Elementor in werkt niet meenemen — daar is onze eigen kopie de terugweg.', 'rankrepair'); ?>
             </div>
             <div class="rr-il-toolbar">
                 <button id="rr-il-apply-btn" class="button button-primary"><?php esc_html_e('Plaats goedgekeurde links', 'rankrepair'); ?></button>

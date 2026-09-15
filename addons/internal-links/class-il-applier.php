@@ -50,7 +50,7 @@ class IL_Applier {
         $ctx     = self::context($row, $source, $target, $seg);
         $verdict = IL_Planner::evaluate($cand, $ctx);
         if (!$verdict['ok']) {
-            return self::fail($row, $verdict['reason'], $verdict['gate']);
+            return self::blocked($row, $verdict['reason'], $verdict['gate']);
         }
 
         $built = IL_Inserter::build($cand);
@@ -64,13 +64,20 @@ class IL_Applier {
             return self::fail($row, $written->get_error_message());
         }
 
+        // De hash is die van de pagina ZOALS HIJ NU IS, niet van het snapshot:
+        // daarmee kunnen we bij het terugdraaien zien of er sindsdien nog iets
+        // is gewijzigd, en of het snapshot dus veilig terug kan.
+        IL_Content::flush_segments($source->ID);
+        clean_post_cache($source->ID);
+        $na = wp_json_encode(IL_Content::snapshot(get_post($source->ID)));
+
         IL_Suggestions::update($row['id'], [
             'status'         => IL_Suggestions::STATUS_APPLIED,
             'reason'         => '',
             'link_uid'       => $cand['uid'],
             'anchor'         => $cand['anchor'],
             'content_before' => wp_json_encode($snapshot),
-            'content_hash'   => md5(wp_json_encode($snapshot)),
+            'content_hash'   => md5($na),
             'applied_at'     => current_time('mysql'),
         ]);
 
@@ -104,11 +111,7 @@ class IL_Applier {
         $uid   = (string) $row['link_uid'];
         $seg   = self::find_segment_with_uid($source, $uid);
         if (!$seg) {
-            // De link is al weg — administratie bijwerken en klaar.
-            IL_Suggestions::update($row['id'], ['status' => IL_Suggestions::STATUS_UNDONE, 'reason' => '']);
-            self::remove_edge((int) $row['source_id'], (int) $row['target_id']);
-            self::refresh($source, null);
-            return ['ok' => true, 'message' => __('De link stond er al niet meer.', 'rankrepair'), 'gate' => ''];
+            return self::undo_via_snapshot($row, $source);
         }
 
         $result = IL_Inserter::remove([
@@ -131,6 +134,45 @@ class IL_Applier {
         self::refresh($source, null);
 
         return ['ok' => true, 'message' => __('Link teruggedraaid.', 'rankrepair'), 'gate' => ''];
+    }
+
+    /**
+     * Terugval wanneer het link-id niet meer in de pagina staat.
+     *
+     * Klopt het snapshot nog met wat er nu staat, dan is er sinds de plaatsing
+     * niets anders veranderd en zetten we de hele pagina terug — dat is ook de
+     * enige route voor Elementor, want WordPress-revisies bewaren alleen
+     * post_content en niet de postmeta waar Elementor zijn pagina in heeft staan.
+     *
+     * Wijkt het af, dan heeft iemand de pagina daarna bewerkt. Dan blijven we
+     * eraf: andermans werk overschrijven is erger dan een link laten staan.
+     */
+    private static function undo_via_snapshot(array $row, WP_Post $source) {
+        $stored = (string) $row['content_before'];
+        $huidig = wp_json_encode(IL_Content::snapshot($source));
+
+        if ($stored !== '' && md5($huidig) === (string) $row['content_hash']) {
+            $snapshot = json_decode($stored, true);
+            if (is_array($snapshot)) {
+                $restored = IL_Content::restore($source, $snapshot);
+                if (!is_wp_error($restored)) {
+                    IL_Suggestions::update($row['id'], ['status' => IL_Suggestions::STATUS_UNDONE, 'reason' => '']);
+                    self::remove_edge((int) $row['source_id'], (int) $row['target_id']);
+                    self::refresh($source, null);
+                    return ['ok' => true, 'message' => __('Pagina teruggezet naar de versie van vóór de plaatsing.', 'rankrepair'), 'gate' => ''];
+                }
+            }
+        }
+
+        // Geen bruikbaar snapshot: de link is weg of de pagina is daarna bewerkt.
+        IL_Suggestions::update($row['id'], ['status' => IL_Suggestions::STATUS_UNDONE, 'reason' => '']);
+        self::remove_edge((int) $row['source_id'], (int) $row['target_id']);
+        self::refresh($source, null);
+        return [
+            'ok'      => true,
+            'message' => __('De link stond er niet meer; de pagina is verder ongemoeid gelaten.', 'rankrepair'),
+            'gate'    => '',
+        ];
     }
 
     /* -------------------------------------------------------------- helpers */
@@ -279,6 +321,43 @@ class IL_Applier {
         if ($target instanceof WP_Post) {
             IL_Index::build_for($target->ID);
         }
+    }
+
+    /**
+     * Gates die per ronde tellen. Ze zeggen niet dat de suggestie deugt niet,
+     * maar dat er nu even geen ruimte is: de bronpagina zit aan zijn maximum, of
+     * een andere suggestie is die alinea net voor geweest.
+     *
+     * Zulke suggesties blijven goedgekeurd staan, zodat ze de volgende ronde
+     * meedoen in plaats van dat iemand ze in het Mislukt-filter moet opzoeken.
+     */
+    private static $round_scoped = ['G9', 'G10', 'G11', 'G12'];
+
+    /** Gates die betekenen dat deze suggestie niet meer van toepassing is. */
+    private static $obsolete = ['G1', 'G2'];
+
+    /**
+     * Een gate hield de plaatsing tegen. Welke status daarbij hoort hangt af van
+     * wélke gate: tijdelijk, achterhaald, of echt mis.
+     */
+    private static function blocked($row, $message, $gate) {
+        if (in_array($gate, self::$round_scoped, true)) {
+            IL_Suggestions::update($row['id'], [
+                'status' => IL_Suggestions::STATUS_APPROVED,
+                'reason' => mb_substr($gate . ': ' . $message, 0, 250, 'UTF-8'),
+            ]);
+            return ['ok' => false, 'message' => $message, 'gate' => $gate, 'retry' => true];
+        }
+
+        if (in_array($gate, self::$obsolete, true)) {
+            IL_Suggestions::update($row['id'], [
+                'status' => IL_Suggestions::STATUS_REJECTED,
+                'reason' => mb_substr($gate . ': ' . $message, 0, 250, 'UTF-8'),
+            ]);
+            return ['ok' => false, 'message' => $message, 'gate' => $gate, 'retry' => false];
+        }
+
+        return self::fail($row, $message, $gate);
     }
 
     private static function fail($row, $message, $gate = '') {

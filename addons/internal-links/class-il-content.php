@@ -30,6 +30,9 @@ class IL_Content {
     /** @var IL_Adapter_Base[]|null */
     private static $adapters = null;
 
+    /** Segmenten per post, binnen één request. Parsen is het duurste dat we doen. */
+    private static $segment_cache = [];
+
     /**
      * Geregistreerde adapters, hoogste prioriteit eerst.
      * Uitbreiden kan via de filter — bijvoorbeeld voor WPBakery, Divi of een ACF-veld.
@@ -92,7 +95,14 @@ class IL_Content {
      * @return array segmenten, elk met de velden uit de kop van dit bestand
      */
     public static function segments($post) {
-        $post    = get_post($post);
+        $post = get_post($post);
+        if (!$post) {
+            return [];
+        }
+        if (isset(self::$segment_cache[$post->ID])) {
+            return self::$segment_cache[$post->ID];
+        }
+
         $adapter = self::adapter_for($post);
         if (!$adapter) {
             return [];
@@ -114,7 +124,18 @@ class IL_Content {
             $seg['adapter'] = $adapter->slug();
             $out[] = $seg;
         }
+
+        self::$segment_cache[$post->ID] = $out;
         return $out;
+    }
+
+    /** Na een schrijfactie is de cache niet meer waar. */
+    public static function flush_segments($post_id = null) {
+        if ($post_id === null) {
+            self::$segment_cache = [];
+        } else {
+            unset(self::$segment_cache[(int) $post_id]);
+        }
     }
 
     /**
@@ -156,6 +177,7 @@ class IL_Content {
         if (empty($changes)) {
             return true;
         }
+        self::flush_segments($post->ID);
         return $adapter->apply($post, $changes);
     }
 
@@ -173,6 +195,7 @@ class IL_Content {
         if (!$adapter) {
             return new WP_Error('il_no_adapter', __('Geen content-adapter voor deze pagina.', 'rankrepair'));
         }
+        self::flush_segments($post->ID);
         return $adapter->restore($post, $snapshot);
     }
 
@@ -180,5 +203,67 @@ class IL_Content {
     public static function editor_label($post) {
         $adapter = self::adapter_for($post);
         return $adapter ? $adapter->label() : __('onbekend', 'rankrepair');
+    }
+
+    /**
+     * Alles waar een interne link in kán zitten, als één brok HTML.
+     *
+     * Let op het verschil met segments(): dát zijn de plekken waar wíj een link
+     * mogen plaatsen — lopende tekst. Voor het tellen van BESTAANDE links moet je
+     * juist alles hebben: knoppen, tabellen, afbeeldingen, citaten, blokken van
+     * andere plugins. Een pagina die vanuit een knop gelinkt wordt is geen orphan,
+     * en een bron die al via een knop naar het doel linkt mag er geen tweede
+     * link bij krijgen.
+     */
+    public static function link_html($post) {
+        $post = get_post($post);
+        if (!$post) {
+            return '';
+        }
+
+        $html = function_exists('do_blocks') ? do_blocks($post->post_content) : $post->post_content;
+
+        $raw = get_post_meta($post->ID, '_elementor_data', true);
+        if (!empty($raw)) {
+            $data = is_array($raw) ? $raw : json_decode((string) $raw, true);
+            if (is_array($data)) {
+                $html .= ' ' . self::elementor_link_html($data);
+            }
+        }
+
+        return $html;
+    }
+
+    /**
+     * Loopt de Elementor-boom af en maakt er iets van dat DOMDocument kan lezen.
+     *
+     * De JSON zelf aan de parser voeren werkt niet: daar staan de aanhalingstekens
+     * en schuine strepen in geëscapete vorm. Tekstvelden gaan er daarom ontdaan
+     * doorheen, en losse URL-instellingen (knoppen, iconen) maken we tot een
+     * kaal <a>-element zodat ze meetellen als link.
+     */
+    private static function elementor_link_html(array $node) {
+        $out = '';
+
+        foreach ($node as $key => $value) {
+            if (is_array($value)) {
+                if ($key === 'link' && !empty($value['url']) && is_string($value['url'])) {
+                    $out .= '<a href="' . esc_url($value['url']) . '"></a> ';
+                    continue;
+                }
+                $out .= self::elementor_link_html($value);
+                continue;
+            }
+            if (!is_string($value) || $value === '') {
+                continue;
+            }
+            if (strpos($value, '<a ') !== false || strpos($value, '<A ') !== false) {
+                $out .= $value . ' ';
+            } elseif ($key === 'url' && preg_match('#^(https?:)?/#i', $value)) {
+                $out .= '<a href="' . esc_url($value) . '"></a> ';
+            }
+        }
+
+        return $out;
     }
 }

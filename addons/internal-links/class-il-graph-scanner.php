@@ -42,6 +42,9 @@ class IL_Graph_Scanner {
     public static function reset() {
         global $wpdb;
         $wpdb->query('TRUNCATE TABLE ' . self::table());
+        // Ook de index leeg: anders blijven pagina's die inmiddels verwijderd of
+        // op concept gezet zijn als bron in de kandidatenlijst opduiken.
+        IL_Index::purge();
         self::flush();
     }
 
@@ -65,17 +68,10 @@ class IL_Graph_Scanner {
 
             $wpdb->delete($table, ['source_id' => $source_id], ['%d']);
 
-            // Alle tekst van de post via de adapters — zo tellen ook links die
-            // in Elementor-widgets staan en niet in post_content.
-            $html = '';
-            foreach (IL_Content::segments($post) as $seg) {
-                $html .= $seg['html'] . ' ';
-            }
-            if ($html === '') {
-                $html = function_exists('do_blocks') ? do_blocks($post->post_content) : $post->post_content;
-            }
-
-            $links        = IL_Text::extract_internal_hrefs($html, $home_host);
+            // Álles waar een link in kan zitten, niet alleen de lopende tekst:
+            // knoppen, tabellen, afbeeldingen en blokken van andere plugins
+            // tellen net zo goed mee voor de vraag of een pagina een orphan is.
+            $links        = IL_Text::extract_internal_hrefs(IL_Content::link_html($post), $home_host);
             $seen_targets = [];
 
             foreach ($links as $link) {
@@ -187,5 +183,6 @@ class IL_Graph_Scanner {
         self::$outbound_map = null;
         IL_Index::flush();
         IL_Profile::flush();
+        IL_Content::flush_segments();
     }
 }

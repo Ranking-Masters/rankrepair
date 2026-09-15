@@ -165,6 +165,9 @@ class IL_Planner {
             if (isset($e['p']) && $e['p'] !== $target->post_type) {
                 continue; // blog linkt naar blog, pagina naar pagina
             }
+            if (isset($e['s']) && $e['s'] !== 'publish') {
+                continue;
+            }
             $candidates[$pid] = ['tokens' => $e['t'], 'keyword' => isset($e['k']) ? $e['k'] : ''];
         }
         if (empty($candidates)) {
@@ -177,6 +180,13 @@ class IL_Planner {
             (int) $pool * 2,
             IL_Index::idf()
         );
+
+        // De index is een momentopname van de laatste scan. Een pagina die
+        // daarna op concept is gezet of in de prullenbak ligt mag geen bron zijn,
+        // dus controleren we de kop van de lijst nog even bij de bron zelf.
+        $scored = array_values(array_filter($scored, function ($hit) {
+            return get_post_status($hit['id']) === 'publish';
+        }));
 
         $inbound = IL_Graph_Scanner::inbound_map();
         foreach ($scored as &$s) {

@@ -31,14 +31,15 @@ class IL_Suggester {
         ]);
 
         if (!$force && !empty($existing)) {
-            return ['suggestions' => self::decorate($existing), 'rejected' => []];
+            return ['suggestions' => self::decorate($existing), 'rejected' => [], 'created' => 0];
         }
 
         if ($force) {
             IL_Suggestions::clear_pending_for_target($target_id);
         }
 
-        $plan = IL_Planner::plan_for_target($target_id);
+        $plan    = IL_Planner::plan_for_target($target_id);
+        $created = 0;
 
         foreach ($plan['accepted'] as $cand) {
             IL_Suggestions::insert([
@@ -52,6 +53,7 @@ class IL_Suggester {
                 'sentence_after'  => isset($cand['sentence_after']) ? $cand['sentence_after'] : '',
                 'status'          => IL_Suggestions::STATUS_PENDING,
             ]);
+            $created++;
         }
 
         $rows = IL_Suggestions::query([
@@ -66,6 +68,7 @@ class IL_Suggester {
         return [
             'suggestions' => self::decorate($rows),
             'rejected'    => self::summarise_rejections($plan['rejected']),
+            'created'     => $created,
         ];
     }
 
@@ -81,6 +84,10 @@ class IL_Suggester {
             if (!$source || !$target) {
                 continue;
             }
+
+            // De snapshot van de hele pagina hoort niet in een AJAX-respons:
+            // bij 200 Elementor-rijen zijn dat tientallen megabytes JSON.
+            unset($row['content_before']);
 
             $row['source_title'] = get_the_title($source);
             $row['source_edit']  = get_edit_post_link($source->ID, 'raw');

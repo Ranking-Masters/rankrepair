@@ -50,6 +50,7 @@ class IL_Index {
             'w' => count($tokens),
             'k' => self::focus_keyword($post_id),
             'p' => $post->post_type,
+            's' => $post->post_status,
         ];
 
         update_post_meta($post_id, self::META, wp_json_encode($entry));
@@ -130,10 +131,28 @@ class IL_Index {
         self::$idf    = null;
     }
 
-    /** Verwijdert de hele index (bij deinstallatie of een volledige herscan). */
+    /**
+     * Verwijdert de hele index (bij deinstallatie of een volledige herscan).
+     *
+     * De metacache moet mee. Doe je dat niet, dan ziet update_post_meta bij het
+     * opnieuw opbouwen nog de oude, gecachete waarde, concludeert "niets
+     * veranderd" en schrijft niets — waarna de index voor die pagina's leeg
+     * blijft en ze nergens meer als bron kunnen opduiken.
+     */
     public static function purge() {
         global $wpdb;
+
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = %s",
+            self::META
+        ));
+
         $wpdb->delete($wpdb->postmeta, ['meta_key' => self::META], ['%s']);
+
+        foreach ($ids as $id) {
+            wp_cache_delete((int) $id, 'post_meta');
+        }
+
         self::flush();
     }
 }
