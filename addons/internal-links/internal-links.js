@@ -6,6 +6,8 @@
 
         graph: null,
         graphLoaded: false,
+        rows: [],          // laatste overzichtsdata
+        scope: null,       // { id, title } wanneer we één doelpagina bekijken
 
         /* ------------------------------------------------------------ init */
 
@@ -13,15 +15,26 @@
             $('.rr-il-tab').on('click', function () { RRIL.openTab($(this).data('tab')); });
 
             $('#rr-il-scan-btn').on('click', function () { RRIL.startScan(); });
-            $('#rr-il-bulk-btn').on('click', function () { RRIL.startBulk(); });
+            $('#rr-il-bulk-btn').on('click', function () { RRIL.generate(); });
             $('#rr-il-export-btn').on('click', function () { RRIL.exportCsv(); });
             $('#rr-il-apply-btn').on('click', function () { RRIL.startApply(); });
             $('#rr-il-filter').on('change', function () { RRIL.loadSuggestions(); });
             $('#rr-il-approve-all').on('click', function () { RRIL.approveAll(); });
+            $('#rr-il-only-content').on('change', function () { RRIL.renderRows(); });
             $('#rr-il-settings-form').on('submit', function (e) { e.preventDefault(); RRIL.saveSettings(); });
 
+            $('#rr-il-check-all').on('change', function () {
+                $('#rr-il-tbody .rr-il-pick').prop('checked', $(this).is(':checked'));
+                RRIL.updateSelection();
+            });
+            $(document).on('change', '.rr-il-pick', function () { RRIL.updateSelection(); });
+
             $(document).on('click', '.rr-il-suggest-btn', function () {
-                RRIL.suggestFor(parseInt($(this).data('id'), 10), $(this));
+                RRIL.showFor(parseInt($(this).data('id'), 10), $(this));
+            });
+            $(document).on('click', '#rr-il-scope-clear', function () { RRIL.clearScope(); });
+            $(document).on('click', '#rr-il-scope-again', function () {
+                RRIL.regenerate(RRIL.scope.id, $(this));
             });
             $(document).on('click', '.rr-il-act', function () {
                 var $b = $(this);
@@ -32,8 +45,6 @@
             RRIL.loadStats();
         },
 
-        // `reload` staat standaard aan. Wie zelf al resultaten gaat tonen zet hem
-        // uit, anders overschrijft de lijst-fetch een tel later wat net getoond is.
         openTab: function (tab, reload) {
             $('.rr-il-tab').removeClass('is-active').filter('[data-tab="' + tab + '"]').addClass('is-active');
             $('.rr-il-panel').removeClass('is-active').filter('[data-panel="' + tab + '"]').addClass('is-active');
@@ -43,27 +54,41 @@
             if (tab === 'data') { RRIL.loadData(); }
         },
 
+        /* --------------------------------------------- knop met voortgang */
+
+        // Zet een knop op "bezig" en houdt de voortgang in de knop zelf bij.
+        // Scheelt zoeken naar een balkje dat ergens anders op de pagina staat.
+        busy: function (sel, text) {
+            var $b = $(sel);
+            if (!$b.data('label')) { $b.data('label', $b.text()); }
+            return {
+                step: function (t) { $b.prop('disabled', true).text(t); },
+                done: function () { $b.prop('disabled', false).text($b.data('label')); }
+            };
+        },
+
         /* ------------------------------------------------------------ scan */
 
         startScan: function () {
-            $('#rr-il-scan-btn, #rr-il-bulk-btn').prop('disabled', true);
-            $('#rr-il-progress').show();
-            RRIL.scanBatch(0);
+            var b = RRIL.busy('#rr-il-scan-btn');
+            $('#rr-il-bulk-btn').prop('disabled', true);
+            RRIL.scanBatch(0, b);
         },
 
-        scanBatch: function (offset) {
+        scanBatch: function (offset, b) {
             RRIL.post('rr_il_scan', { offset: offset }, function (d) {
-                RRIL.progress('#rr-il-progress-fill', '#rr-il-progress-txt', d.processed, d.total);
+                b.step('Scannen… ' + d.processed + ' / ' + d.total);
                 if (d.done) {
                     RRIL.loadStats();
-                    $('#rr-il-scan-btn, #rr-il-bulk-btn').prop('disabled', false);
-                    setTimeout(function () { $('#rr-il-progress').fadeOut(300); }, 800);
+                    b.done();
+                    $('#rr-il-bulk-btn').prop('disabled', false);
                 } else {
-                    RRIL.scanBatch(d.processed);
+                    RRIL.scanBatch(d.processed, b);
                 }
             }, function (msg) {
-                $('#rr-il-scan-btn, #rr-il-bulk-btn').prop('disabled', false);
-                $('#rr-il-tbody').html('<tr><td colspan="6" class="rr-il-error">' + RRIL.esc(msg) + '</td></tr>');
+                b.done();
+                $('#rr-il-bulk-btn').prop('disabled', false);
+                $('#rr-il-tbody').html('<tr><td colspan="8" class="rr-il-error">' + RRIL.esc(msg) + '</td></tr>');
             });
         },
 
@@ -73,76 +98,192 @@
                 $('#rr-il-stat-thin').text(d.thin);
                 $('#rr-il-stat-avg').text(d.avg_inbound);
                 $('#rr-il-stat-total').text(d.total);
-                RRIL.renderRows(d.rows);
+                RRIL.rows = d.rows || [];
+                RRIL.renderRows();
                 RRIL.updateCounts(d.counts);
             });
         },
 
-        renderRows: function (rows) {
+        /* -------------------------------------------------------- overzicht */
+
+        visibleRows: function () {
+            if (!$('#rr-il-only-content').is(':checked')) { return RRIL.rows; }
+            // Pagina's zonder eigen tekst zijn templates en landingspagina's; daar
+            // valt niets te linken, en ze verdringen wat er wél toe doet.
+            return RRIL.rows.filter(function (r) { return r.words >= 150; });
+        },
+
+        renderRows: function () {
+            var rows = RRIL.visibleRows();
             var $tb = $('#rr-il-tbody').empty();
+            var verborgen = RRIL.rows.length - rows.length;
+
             if (!rows.length) {
-                $tb.html('<tr><td colspan="6">Geen orphan- of thin-pagina\'s gevonden.</td></tr>');
+                $tb.html('<tr><td colspan="8">Geen pagina\'s in deze weergave.</td></tr>');
+                RRIL.updateSelection();
                 return;
             }
+
             var html = '';
             rows.forEach(function (row) {
                 var badge = row.inbound === 0
                     ? '<span class="rr-il-badge rr-il-badge--orphan">orphan</span>'
                     : '<span class="rr-il-badge rr-il-badge--thin">thin</span>';
                 html += '<tr data-id="' + row.id + '">' +
-                    '<td>' + badge + ' ' + RRIL.esc(row.title) + '</td>' +
-                    '<td>' + RRIL.esc(row.type) + '</td>' +
+                    '<td class="rr-il-col-check"><input type="checkbox" class="rr-il-pick" value="' + row.id + '"></td>' +
+                    '<td class="rr-il-col-thumb">' + RRIL.thumb(row.thumb, row.title) + '</td>' +
+                    '<td>' + badge + ' <strong>' + RRIL.esc(row.title) + '</strong>' +
+                        (row.keyword ? '<br><span class="rr-il-muted">' + RRIL.esc(row.keyword) + '</span>' : '') +
+                    '</td>' +
                     '<td>' + row.inbound + '</td>' +
                     '<td>' + row.outbound + '</td>' +
-                    '<td>' + (row.suggested ? row.suggested : '–') + '</td>' +
-                    '<td><button class="button rr-il-suggest-btn" data-id="' + row.id + '">Suggesties</button></td>' +
+                    '<td>' + row.words + '</td>' +
+                    '<td>' + (row.suggested ? '<strong>' + row.suggested + '</strong>' : '–') + '</td>' +
+                    '<td><button class="button rr-il-suggest-btn" data-id="' + row.id + '">' +
+                        (row.suggested ? 'Bekijk' : 'Zoek') + '</button></td>' +
                     '</tr>';
             });
+            if (verborgen > 0) {
+                html += '<tr class="rr-il-hiddenrow"><td colspan="8">' + verborgen +
+                    ' pagina\'s verborgen omdat ze geen eigen tekst hebben (templates en landingspagina\'s).</td></tr>';
+            }
             $tb.html(html);
+            RRIL.updateSelection();
+        },
+
+        // De letter staat er altijd; de afbeelding ligt erover. Laadt die niet
+        // (verwijderde media, verkeerde URL), dan haalt onerror hem weg en zie je
+        // de letter — geen gebroken-plaatje-icoon.
+        thumb: function (url, title) {
+            // Eerste létter, niet het eerste teken: titels als "10 SEO-tips"
+            // zouden anders een cijfer tonen en dat leest als een rijnummer.
+            var m = String(title || '').match(/\p{L}/u);
+            var letter = RRIL.esc(m ? m[0].toUpperCase() : '·');
+            var img = url
+                ? '<img class="rr-il-thumb-img" src="' + RRIL.escAttr(url) +
+                  '" alt="" loading="lazy" onerror="this.remove()">'
+                : '';
+            return '<span class="rr-il-thumb rr-il-thumb--leeg">' + letter + img + '</span>';
+        },
+
+        selected: function () {
+            return $('#rr-il-tbody .rr-il-pick:checked').map(function () {
+                return parseInt(this.value, 10);
+            }).get();
+        },
+
+        updateSelection: function () {
+            var n = RRIL.selected().length;
+            var $b = $('#rr-il-bulk-btn');
+            $b.data('label', n ? 'Genereer voor ' + n + ' geselecteerde' : 'Genereer suggesties');
+            if (!$b.prop('disabled')) { $b.text($b.data('label')); }
+
+            var totaal = $('#rr-il-tbody .rr-il-pick').length;
+            $('#rr-il-check-all').prop('checked', totaal > 0 && n === totaal);
+        },
+
+        /* ------------------------------------------------------- genereren */
+
+        // Zonder selectie draait hij over alle zichtbare pagina's; met selectie
+        // alleen daarover. Eén AJAX-call per pagina, zodat je kunt meekijken en
+        // op elk moment kunt stoppen door de pagina te verlaten.
+        generate: function () {
+            var ids = RRIL.selected();
+            if (!ids.length) {
+                ids = RRIL.visibleRows()
+                    .filter(function (r) { return r.inbound <= 1 && !r.suggested; })
+                    .map(function (r) { return r.id; });
+            }
+            if (!ids.length) {
+                window.alert('Niets te doen: alle zichtbare pagina\'s hebben al suggesties.');
+                return;
+            }
+            if (ids.length > 25 && !window.confirm(
+                'Suggesties zoeken voor ' + ids.length + ' pagina\'s. Dat kan even duren. Doorgaan?')) {
+                return;
+            }
+
+            var b = RRIL.busy('#rr-il-bulk-btn');
+            $('#rr-il-scan-btn').prop('disabled', true);
+            RRIL.generateNext(ids, 0, 0, b);
+        },
+
+        generateNext: function (ids, i, found, b) {
+            if (i >= ids.length) {
+                b.done();
+                $('#rr-il-scan-btn').prop('disabled', false);
+                RRIL.loadStats();
+                if (found) { RRIL.openTab('suggesties'); }
+                else { window.alert('Geen bruikbare plek gevonden op deze pagina\'s.'); }
+                return;
+            }
+
+            b.step('Zoeken… ' + (i + 1) + '/' + ids.length + ' · ' + found + ' gevonden');
+
+            RRIL.post('rr_il_suggest', { target_id: ids[i], force: 1 }, function (d) {
+                RRIL.generateNext(ids, i + 1, found + (d.suggestions || []).length, b);
+            }, function () {
+                RRIL.generateNext(ids, i + 1, found, b);
+            });
         },
 
         /* ------------------------------------------------------- suggesties */
 
-        startBulk: function () {
-            $('#rr-il-scan-btn, #rr-il-bulk-btn').prop('disabled', true);
-            $('#rr-il-progress').show();
-            RRIL.bulkBatch(0, 0);
+        // Klikken op een pagina met bestaande suggesties toont ze meteen; alleen
+        // een pagina zonder suggesties gaat daadwerkelijk zoeken.
+        showFor: function (id, $btn) {
+            var row = RRIL.rows.filter(function (r) { return r.id === id; })[0];
+            RRIL.scope = { id: id, title: row ? row.title : '#' + id };
+
+            if (row && row.suggested) {
+                RRIL.openTab('suggesties', false);
+                RRIL.loadSuggestions();
+                return;
+            }
+            RRIL.regenerate(id, $btn);
         },
 
-        bulkBatch: function (offset, found) {
-            RRIL.post('rr_il_suggest_bulk', { offset: offset }, function (d) {
-                var total = found + d.found;
-                RRIL.progress('#rr-il-progress-fill', '#rr-il-progress-txt', d.processed, d.total, total + ' gevonden');
-                if (d.done) {
-                    $('#rr-il-scan-btn, #rr-il-bulk-btn').prop('disabled', false);
-                    RRIL.loadStats();
-                    RRIL.openTab('suggesties');
-                } else {
-                    RRIL.bulkBatch(d.processed, total);
-                }
-            }, function (msg) {
-                $('#rr-il-scan-btn, #rr-il-bulk-btn').prop('disabled', false);
-                alert(msg);
-            });
-        },
-
-        suggestFor: function (id, $btn) {
+        regenerate: function (id, $btn) {
+            var oud = $btn.text();
             $btn.prop('disabled', true).text('Zoeken…');
             RRIL.post('rr_il_suggest', { target_id: id, force: 1 }, function (d) {
-                $btn.prop('disabled', false).text('Suggesties');
+                $btn.prop('disabled', false).text(oud);
+                RRIL.scope = { id: id, title: d.target_title || ('#' + id) };
                 RRIL.openTab('suggesties', false);
                 $('#rr-il-filter').val('pending');
+                RRIL.renderScope();
                 RRIL.renderSuggestions(d.suggestions, d.rejected);
+                RRIL.loadStats();
             }, function (msg) {
-                $btn.prop('disabled', false).text('Suggesties');
-                alert(msg);
+                $btn.prop('disabled', false).text(oud);
+                window.alert(msg);
             });
+        },
+
+        clearScope: function () {
+            RRIL.scope = null;
+            RRIL.loadSuggestions();
+        },
+
+        renderScope: function () {
+            var $s = $('#rr-il-scope');
+            if (!RRIL.scope) { $s.hide().empty(); return; }
+            $s.show().html(
+                '<span class="rr-il-scope-label">Suggesties naar</span> ' +
+                '<strong>' + RRIL.esc(RRIL.scope.title) + '</strong>' +
+                '<button class="button-link" id="rr-il-scope-again">opnieuw zoeken</button>' +
+                '<button class="button-link" id="rr-il-scope-clear">toon alle pagina\'s</button>'
+            );
         },
 
         loadSuggestions: function () {
-            var status = $('#rr-il-filter').val();
+            var data = { status: $('#rr-il-filter').val(), limit: 100 };
+            if (RRIL.scope) { data.target_id = RRIL.scope.id; }
+
             $('#rr-il-suggestions').html('<p class="rr-il-empty">Laden…</p>');
-            RRIL.post('rr_il_list', { status: status, limit: 100 }, function (d) {
+            RRIL.renderScope();
+
+            RRIL.post('rr_il_list', data, function (d) {
                 RRIL.updateCounts(d.counts);
                 RRIL.renderSuggestions(d.rows, []);
             });
@@ -152,15 +293,19 @@
             var html = '';
 
             if (rejected && rejected.length) {
-                html += '<details class="rr-il-rejected"><summary>Afgewezen kandidaten (' + rejected.length + ' soorten)</summary><ul>';
+                html += '<details class="rr-il-rejected"><summary>Waarom andere plekken afvielen (' +
+                    rejected.length + ' soorten)</summary><ul>';
                 rejected.forEach(function (r) {
-                    html += '<li><code>' + RRIL.esc(r.gate) + '</code> ' + RRIL.esc(r.reason) + ' <span class="rr-il-muted">×' + r.count + '</span></li>';
+                    html += '<li><code>' + RRIL.esc(r.gate) + '</code> ' + RRIL.esc(r.reason) +
+                        ' <span class="rr-il-muted">×' + r.count + '</span></li>';
                 });
                 html += '</ul></details>';
             }
 
             if (!rows || !rows.length) {
-                html += '<p class="rr-il-empty">Geen suggesties in deze weergave.</p>';
+                html += '<p class="rr-il-empty">' +
+                    (RRIL.scope ? 'Geen bruikbare plek gevonden om naar deze pagina te linken.'
+                                : 'Geen suggesties in deze weergave.') + '</p>';
                 $('#rr-il-suggestions').html(html);
                 return;
             }
@@ -171,46 +316,74 @@
 
         card: function (r) {
             var preview = r.preview || {};
-            var after = preview.after ? RRIL.esc(preview.after)
-                .replace('«', '<mark>').replace('»', '</mark>') : '';
+            var zin = preview.after
+                ? RRIL.esc(preview.after).replace('«', '<mark>').replace('»', '</mark>')
+                : '';
 
-            var actions = '';
-            if (r.status === 'applied') {
-                actions = '<button class="button rr-il-act" data-act="undo" data-id="' + r.id + '">Terugdraaien</button>';
-            } else {
-                actions =
-                    '<button class="button button-primary rr-il-act" data-act="approve" data-id="' + r.id + '">Goedkeuren</button> ' +
-                    '<button class="button rr-il-act" data-act="reject" data-id="' + r.id + '">Afwijzen</button> ' +
-                    '<button class="button rr-il-act" data-act="apply" data-id="' + r.id + '">Nu plaatsen</button>';
-            }
+            var acties = r.status === 'applied'
+                ? '<button class="button rr-il-act" data-act="undo" data-id="' + r.id + '">Terugdraaien</button>'
+                : '<button class="button button-primary rr-il-act" data-act="approve" data-id="' + r.id + '">Goedkeuren</button> ' +
+                  '<button class="button rr-il-act" data-act="reject" data-id="' + r.id + '">Afwijzen</button> ' +
+                  '<button class="button rr-il-act" data-act="apply" data-id="' + r.id + '">Nu plaatsen</button>';
+
+            var plek = r.position
+                ? 'alinea ' + r.position.index + ' van ' + r.position.total
+                : 'alinea onbekend';
 
             return '' +
-                '<article class="rr-il-card rr-il-card--' + RRIL.escAttr(r.status) + '" data-id="' + r.id + '">' +
-                  '<header class="rr-il-card-head">' +
-                    '<div>' +
-                      '<span class="rr-il-status">' + RRIL.esc(RRIL.statusLabel(r.status)) + '</span> ' +
-                      '<strong>' + RRIL.esc(r.source_title) + '</strong>' +
-                      '<span class="rr-il-muted"> → </span>' +
-                      '<a href="' + RRIL.escAttr(r.target_url) + '" target="_blank" rel="noopener">' + RRIL.esc(r.target_title) + '</a>' +
-                    '</div>' +
-                    '<div class="rr-il-meta">' +
-                      '<span title="Editor van de bronpagina">' + RRIL.esc(r.editor) + '</span> · ' +
-                      '<span title="Plaatsingsmodus">' + RRIL.esc(RRIL.modeLabel(r.mode)) + '</span> · ' +
-                      '<span title="Relevantiescore">' + RRIL.esc(r.score) + '</span>' +
-                    '</div>' +
-                  '</header>' +
-                  '<div class="rr-il-anchor-row">' +
-                    '<span class="rr-il-label">Ankertekst</span>' +
-                    '<span class="rr-il-anchor" data-id="' + r.id + '" title="Klik om aan te passen">' + RRIL.esc(r.anchor) + '</span>' +
-                  '</div>' +
-                  (after ? '<p class="rr-il-preview">' + after + '</p>' : '<p class="rr-il-preview rr-il-muted">Voorbeeld niet beschikbaar — de alinea is gewijzigd.</p>') +
-                  (r.mode !== 'wrap' && preview.before ? '<p class="rr-il-preview-before"><span class="rr-il-label">Was</span> ' + RRIL.esc(preview.before) + '</p>' : '') +
-                  (r.reason ? '<p class="rr-il-error">' + RRIL.esc(r.reason) + '</p>' : '') +
-                  '<footer class="rr-il-card-foot">' +
-                    actions +
-                    ' <a class="rr-il-editlink" href="' + RRIL.escAttr(r.source_edit || '#') + '" target="_blank" rel="noopener">Bron bewerken</a>' +
-                  '</footer>' +
-                '</article>';
+            '<article class="rr-il-card rr-il-card--' + RRIL.escAttr(r.status) + '" data-id="' + r.id + '">' +
+
+              '<div class="rr-il-status-row">' +
+                '<span class="rr-il-status">' + RRIL.esc(RRIL.statusLabel(r.status)) + '</span>' +
+                '<span class="rr-il-meta">' + RRIL.esc(RRIL.modeLabel(r.mode)) +
+                  ' · ' + RRIL.esc(r.editor) + ' · ' + plek + '</span>' +
+              '</div>' +
+
+              // Waar gaat de link heen …
+              '<div class="rr-il-party rr-il-party--doel">' +
+                RRIL.thumb(r.target_thumb, r.target_title) +
+                '<div class="rr-il-party-body">' +
+                  '<span class="rr-il-party-label">Deze pagina krijgt de link</span>' +
+                  '<a class="rr-il-party-title" href="' + RRIL.escAttr(r.target_url) + '" target="_blank" rel="noopener">' +
+                    RRIL.esc(r.target_title) + '</a>' +
+                  '<span class="rr-il-party-sub">' + r.target_inbound + ' inkomende links nu</span>' +
+                '</div>' +
+              '</div>' +
+
+              '<div class="rr-il-arrow" aria-hidden="true">↑</div>' +
+
+              // … en waar komt hij vandaan
+              '<div class="rr-il-party rr-il-party--bron">' +
+                RRIL.thumb(r.source_thumb, r.source_title) +
+                '<div class="rr-il-party-body">' +
+                  '<span class="rr-il-party-label">Vanaf deze pagina</span>' +
+                  '<a class="rr-il-party-title" href="' + RRIL.escAttr(r.source_url) + '" target="_blank" rel="noopener">' +
+                    RRIL.esc(r.source_title) + '</a>' +
+                  '<span class="rr-il-party-sub"><a href="' + RRIL.escAttr(r.source_edit || '#') +
+                    '" target="_blank" rel="noopener">bewerken</a></span>' +
+                '</div>' +
+              '</div>' +
+
+              '<div class="rr-il-zin">' +
+                '<span class="rr-il-party-label">In deze zin</span>' +
+                (zin ? '<p class="rr-il-preview">' + zin + '</p>'
+                     : '<p class="rr-il-preview rr-il-muted">Voorbeeld niet beschikbaar — de alinea is gewijzigd.</p>') +
+                (r.mode !== 'wrap' && preview.before
+                  ? '<p class="rr-il-preview-before"><span class="rr-il-label">was</span> ' + RRIL.esc(preview.before) + '</p>'
+                  : '') +
+              '</div>' +
+
+              '<div class="rr-il-anchor-row">' +
+                '<span class="rr-il-party-label">Met dit woord</span>' +
+                '<span class="rr-il-anchor" data-id="' + r.id + '" title="Klik om aan te passen">' +
+                  RRIL.esc(r.anchor) + '</span>' +
+                '<span class="rr-il-muted">klik om aan te passen</span>' +
+              '</div>' +
+
+              (r.reason ? '<p class="rr-il-error">' + RRIL.esc(r.reason) + '</p>' : '') +
+
+              '<footer class="rr-il-card-foot">' + acties + '</footer>' +
+            '</article>';
         },
 
         statusLabel: function (s) {
@@ -219,7 +392,8 @@
         },
 
         modeLabel: function (m) {
-            return { wrap: 'bestaande woorden', rewrite: 'zin herschreven', clause: 'bijzin' }[m] || m;
+            return { wrap: 'bestaande woorden linken', rewrite: 'zin licht herschreven',
+                     clause: 'bijzin toegevoegd' }[m] || m;
         },
 
         /* ----------------------------------------------------------- acties */
@@ -236,7 +410,7 @@
                     RRIL.replaceCard(id, d.row);
                 }, function (msg) {
                     $btn.prop('disabled', false);
-                    alert(msg);
+                    window.alert(msg);
                 });
                 return;
             }
@@ -244,10 +418,10 @@
             RRIL.post(action === 'undo' ? 'rr_il_undo' : 'rr_il_apply', { id: id }, function (d) {
                 RRIL.updateCounts(d.counts);
                 RRIL.replaceCard(id, d.row);
-                if (!d.ok) { alert(d.message); }
+                if (!d.ok) { window.alert(d.message); }
             }, function (msg) {
                 $btn.prop('disabled', false);
-                alert(msg);
+                window.alert(msg);
             });
         },
 
@@ -255,16 +429,21 @@
             var $card = $('.rr-il-card[data-id="' + id + '"]');
             if (!row) { $card.remove(); return; }
             var status = $('#rr-il-filter').val();
-            if (status !== 'all' && row.status !== status) { $card.fadeOut(200, function () { $(this).remove(); }); return; }
+            if (status !== 'all' && row.status !== status) {
+                $card.fadeOut(200, function () { $(this).remove(); });
+                return;
+            }
             $card.replaceWith(RRIL.card(row));
         },
 
         approveAll: function () {
             var ids = $('.rr-il-card').map(function () { return parseInt($(this).data('id'), 10); }).get();
             if (!ids.length) { return; }
+            var b = RRIL.busy('#rr-il-approve-all');
             var i = 0;
             (function next() {
-                if (i >= ids.length) { RRIL.loadSuggestions(); return; }
+                if (i >= ids.length) { b.done(); RRIL.loadSuggestions(); return; }
+                b.step('Goedkeuren… ' + (i + 1) + '/' + ids.length);
                 RRIL.post('rr_il_update', { id: ids[i], status: 'approved' }, function (d) {
                     RRIL.updateCounts(d.counts);
                     i++; next();
@@ -292,7 +471,7 @@
                     RRIL.replaceCard(id, d.row);
                 }, function (msg) {
                     $el.text(old);
-                    alert(msg);
+                    window.alert(msg);
                 });
             };
 
@@ -307,25 +486,23 @@
         startApply: function () {
             if (!window.confirm(rrIL.i18n.confirmApply)) { return; }
 
-            $('#rr-il-apply-btn').prop('disabled', true);
+            var b = RRIL.busy('#rr-il-apply-btn');
             $('#rr-il-apply-log').empty();
-            $('#rr-il-apply-progress').show();
 
             RRIL.post('rr_il_list', { status: 'approved', limit: 200 }, function (d) {
                 var ids = d.rows.map(function (r) { return parseInt(r.id, 10); });
                 if (!ids.length) {
-                    $('#rr-il-apply-btn').prop('disabled', false);
-                    $('#rr-il-apply-progress').hide();
+                    b.done();
                     RRIL.log('Niets goedgekeurd om te plaatsen.', 'muted');
                     return;
                 }
-                RRIL.applyNext(ids, 0, { ok: 0, fail: 0, retry: 0 });
+                RRIL.applyNext(ids, 0, { ok: 0, fail: 0, retry: 0 }, b);
             });
         },
 
-        applyNext: function (ids, i, tally) {
+        applyNext: function (ids, i, tally, b) {
             if (i >= ids.length) {
-                $('#rr-il-apply-btn').prop('disabled', false);
+                b.done();
                 var slot = 'Klaar: ' + tally.ok + ' geplaatst';
                 if (tally.retry) { slot += ', ' + tally.retry + ' wachten op ruimte (blijven goedgekeurd staan)'; }
                 if (tally.fail) { slot += ', ' + tally.fail + ' mislukt'; }
@@ -334,13 +511,14 @@
                 return;
             }
 
-            RRIL.progress('#rr-il-apply-fill', '#rr-il-apply-txt', i, ids.length);
+            b.step('Plaatsen… ' + (i + 1) + '/' + ids.length);
 
             RRIL.post('rr_il_apply', { id: ids[i] }, function (d) {
                 var row = d.row || {};
                 if (d.ok) {
                     tally.ok++;
-                    RRIL.log('✓ ' + (row.source_title || '#' + ids[i]) + ' → ' + (row.target_title || '') + ' ("' + (row.anchor || '') + '")', 'ok');
+                    RRIL.log('✓ ' + (row.source_title || '#' + ids[i]) + ' → ' + (row.target_title || '') +
+                        ' ("' + (row.anchor || '') + '")', 'ok');
                 } else if (d.retry) {
                     tally.retry++;
                     RRIL.log('· ' + (row.source_title || '#' + ids[i]) + ': ' + d.message + ' — blijft klaarstaan', 'muted');
@@ -349,16 +527,17 @@
                     RRIL.log('– ' + (row.source_title || '#' + ids[i]) + ': ' + d.message, 'warn');
                 }
                 RRIL.updateCounts(d.counts);
-                RRIL.applyNext(ids, i + 1, tally);
+                RRIL.applyNext(ids, i + 1, tally, b);
             }, function (msg) {
                 tally.fail++;
                 RRIL.log('– #' + ids[i] + ': ' + msg, 'warn');
-                RRIL.applyNext(ids, i + 1, tally);
+                RRIL.applyNext(ids, i + 1, tally, b);
             });
         },
 
         log: function (text, kind) {
-            $('#rr-il-apply-log').append('<div class="rr-il-log-line rr-il-log--' + (kind || '') + '">' + RRIL.esc(text) + '</div>');
+            $('#rr-il-apply-log').append('<div class="rr-il-log-line rr-il-log--' + (kind || '') + '">' +
+                RRIL.esc(text) + '</div>');
             var el = document.getElementById('rr-il-apply-log');
             el.scrollTop = el.scrollHeight;
         },
@@ -376,6 +555,7 @@
 
         loadGraphLib: function (cb) {
             if (RRIL.graphLoaded) { cb(); return; }
+            $('#rr-il-graph').html('<p class="rr-il-empty">Grafiek laden…</p>');
             var s = document.createElement('script');
             s.src = rrIL.graphLib;
             s.onload = function () { RRIL.graphLoaded = true; cb(); };
@@ -396,31 +576,43 @@
 
             var COLORS = { orphan: '#EF4444', thin: '#F59E0B', ok: '#10B981', hub: '#6366F1' };
 
-            RRIL.graph = ForceGraph3D()(el)
-                .backgroundColor('#0b1020')
-                .width(el.clientWidth)
-                .height(el.clientHeight)
-                .graphData({ nodes: data.nodes, links: data.links })
-                .nodeId('id')
-                .nodeVal('val')
-                .nodeLabel(function (n) { return n.label + ' — ' + n.inbound + '× gelinkt'; })
-                .nodeColor(function (n) { return COLORS[n.state] || '#9CA3AF'; })
-                .linkColor(function (l) { return l.ours ? '#A855F7' : 'rgba(148,163,184,0.35)'; })
-                .linkWidth(function (l) { return l.ours ? 1.2 : 0.4; })
-                .linkDirectionalParticles(function (l) { return l.ours ? 2 : 0; })
-                .linkDirectionalParticleWidth(1.2)
-                .onNodeClick(function (n) {
-                    // Via de server aangeleverd: WordPress staat lang niet altijd
-                    // op /wp-admin/ (submap-installatie, multisite, verplaatst beheer).
-                    window.open(rrIL.editUrl + '?post=' + n.id + '&action=edit', '_blank');
-                });
+            // Losse knopen trekken de graaf uit elkaar en maken het geheel
+            // onleesbaar. Standaard tonen we het deel dat verbonden is; de
+            // weespagina's staan in het overzicht, niet hier.
+            var verbonden = {};
+            data.links.forEach(function (l) { verbonden[l.source] = true; verbonden[l.target] = true; });
+            var nodes = data.nodes.filter(function (n) { return verbonden[n.id]; });
+            var losse = data.nodes.length - nodes.length;
 
-            // Bewust géén zoomToFit: op een site met veel weespagina's slingert de
-            // simulatie die ver uit elkaar, en "alles in beeld" betekent dan zo ver
-            // uitzoomen dat je niets meer onderscheidt. De standaardcamera geeft een
-            // bruikbaarder startbeeld; scrollen doet de rest.
+            try {
+                RRIL.graph = ForceGraph3D()(el)
+                    .backgroundColor('#0b1020')
+                    .width(el.clientWidth)
+                    .height(el.clientHeight)
+                    .graphData({ nodes: nodes, links: data.links })
+                    .nodeId('id')
+                    .nodeVal('val')
+                    .nodeLabel(function (n) { return n.label + ' — ' + n.inbound + '× gelinkt'; })
+                    .nodeColor(function (n) { return COLORS[n.state] || '#9CA3AF'; })
+                    .linkColor(function (l) { return l.ours ? '#A855F7' : 'rgba(148,163,184,0.35)'; })
+                    .linkWidth(function (l) { return l.ours ? 1.2 : 0.4; })
+                    .linkDirectionalParticles(function (l) { return l.ours ? 2 : 0; })
+                    .linkDirectionalParticleWidth(1.2)
+                    .onNodeClick(function (n) {
+                        window.open(rrIL.editUrl + '?post=' + n.id + '&action=edit', '_blank');
+                    });
+            } catch (e) {
+                el.innerHTML = '<p class="rr-il-empty rr-il-error">De graaf kon niet worden opgebouwd: ' +
+                    RRIL.esc(e.message) + '</p>';
+                return;
+            }
 
-            $(window).on('resize.rril', function () {
+            var noot = nodes.length + ' verbonden pagina\'s, ' + data.links.length + ' links';
+            if (losse) { noot += ' · ' + losse + ' weespagina\'s niet getoond'; }
+            if (data.skipped) { noot += ' · ' + data.skipped + ' links naar andere post-types overgeslagen'; }
+            $('#rr-il-graph-note').text(noot);
+
+            $(window).off('resize.rril').on('resize.rril', function () {
                 if (RRIL.graph) { RRIL.graph.width(el.clientWidth).height(el.clientHeight); }
             });
         },
@@ -470,7 +662,8 @@
         /* ----------------------------------------------------------- export */
 
         exportCsv: function () {
-            var $btn = $('#rr-il-export-btn').prop('disabled', true).text('Exporteren…');
+            var b = RRIL.busy('#rr-il-export-btn');
+            b.step('Exporteren…');
             RRIL.post('rr_il_export', {}, function (d) {
                 var blob = new Blob(["﻿" + d.csv], { type: 'text/csv;charset=utf-8;' });
                 var url = URL.createObjectURL(blob);
@@ -478,10 +671,10 @@
                 a.href = url; a.download = d.filename;
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                $btn.prop('disabled', false).text('Exporteer CSV');
+                b.done();
             }, function (msg) {
-                $btn.prop('disabled', false).text('Exporteer CSV');
-                alert(msg);
+                b.done();
+                window.alert(msg);
             });
         },
 
@@ -494,12 +687,6 @@
                     else if (onErr) { onErr(r && r.data && r.data.message ? r.data.message : 'Er ging iets mis.'); }
                 })
                 .fail(function () { if (onErr) { onErr('Verbindingsfout.'); } });
-        },
-
-        progress: function (fill, txt, done, total, suffix) {
-            var pct = total > 0 ? Math.round(done / total * 100) : 100;
-            $(fill).css('width', pct + '%');
-            $(txt).text(done + ' / ' + total + (suffix ? ' · ' + suffix : ''));
         },
 
         updateCounts: function (counts) {

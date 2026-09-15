@@ -96,15 +96,50 @@ class IL_Suggester {
             $row['source_title'] = get_the_title($source);
             $row['source_edit']  = get_edit_post_link($source->ID, 'raw');
             $row['source_url']   = get_permalink($source->ID);
+            $row['source_thumb'] = self::thumb($source->ID);
             $row['target_title'] = get_the_title($target);
             $row['target_url']   = get_permalink($target->ID);
+            $row['target_edit']  = get_edit_post_link($target->ID, 'raw');
+            $row['target_thumb'] = self::thumb($target->ID);
+            $row['target_inbound'] = IL_Graph_Scanner::inbound_count($target->ID);
             $row['editor']       = IL_Content::editor_label($source);
             $row['score']        = round((float) $row['score'], 4);
             $row['preview']      = self::preview($row, $source, $target);
+            $row['position']     = self::position($row, $source);
 
             $out[] = $row;
         }
         return $out;
+    }
+
+    /**
+     * Uitgelichte afbeelding, met de eerste afbeelding uit de content als
+     * terugval. Puur om de kaart herkenbaar te maken: je ziet sneller wélke
+     * pagina je voor je hebt aan een plaatje dan aan een titel.
+     */
+    private static function thumb($post_id) {
+        $url = get_the_post_thumbnail_url($post_id, 'thumbnail');
+        if ($url) {
+            return $url;
+        }
+        $post = get_post($post_id);
+        if ($post && preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $post->post_content, $m)) {
+            return $m[1];
+        }
+        return '';
+    }
+
+    /** "alinea 3 van 8" — waar in de pagina de link komt te staan. */
+    private static function position(array $row, WP_Post $source) {
+        $segments = IL_Content::segments($source);
+        $totaal   = 0;
+        $hier     = 0;
+        foreach ($segments as $seg) {
+            if ($seg['kind'] === 'heading') { continue; }
+            $totaal++;
+            if ((string) $seg['ref'] === (string) $row['segment_ref']) { $hier = $totaal; }
+        }
+        return $hier ? ['index' => $hier, 'total' => $totaal] : null;
     }
 
     /**

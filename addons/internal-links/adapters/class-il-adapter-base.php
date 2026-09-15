@@ -50,9 +50,18 @@ abstract class IL_Adapter_Base {
 
     /* ------------------------------------------------------------- helpers */
 
-    /** Soort segment afleiden uit de buitenste tag. */
+    /** Soort segment afleiden uit de markup. */
     protected function kind_from_html($html) {
         $html = ltrim((string) $html);
+
+        // Tabellen, code en figuren staan vaak in een <div>-wrapper, dus kijken
+        // naar alleen de buitenste tag is niet genoeg. Hier hoort geen link in:
+        // een platgeslagen tabel leest als één zin van vijftig woorden, en een
+        // anker in een cel is voor een lezer betekenisloos.
+        if (preg_match('/<\s*(table|thead|tbody|tr|td|th|pre|code|figure|iframe|form)\b/i', $html)) {
+            return 'other';
+        }
+
         if (preg_match('/^<\s*(h[1-6])\b/i', $html)) {
             return 'heading';
         }

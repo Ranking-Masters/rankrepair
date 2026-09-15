@@ -50,9 +50,15 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
             return;
         }
         $base = RR_PLUGIN_URL . 'addons/internal-links/';
+        $dir  = __DIR__ . '/';
 
-        wp_enqueue_style('rr-internal-links', $base . 'internal-links.css', [], RR_VERSION);
-        wp_enqueue_script('rr-internal-links', $base . 'internal-links.js', ['jquery', 'rr-admin-script'], RR_VERSION, true);
+        // Versienummer uit de bestandsdatum. Bij een herdeploy van dezelfde
+        // pluginversie serveert de browser anders de oude JS en CSS.
+        $css_ver = @filemtime($dir . 'internal-links.css') ?: RR_VERSION;
+        $js_ver  = @filemtime($dir . 'internal-links.js')  ?: RR_VERSION;
+
+        wp_enqueue_style('rr-internal-links', $base . 'internal-links.css', [], $css_ver);
+        wp_enqueue_script('rr-internal-links', $base . 'internal-links.js', ['jquery', 'rr-admin-script'], $js_ver, true);
 
         // De 3D-graaf is ~700 kB; die laden we pas als iemand het Data-tabblad opent.
         wp_localize_script('rr-internal-links', 'rrIL', [
@@ -127,6 +133,10 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
                 'inbound'   => $in,
                 'outbound'  => IL_Graph_Scanner::outbound_count($id),
                 'suggested' => isset($suggested[$id]) ? (int) $suggested[$id] : 0,
+                'thumb'     => get_the_post_thumbnail_url($id, 'thumbnail') ?: '',
+                'words'     => IL_Profile::word_count($id),
+                'keyword'   => IL_Index::focus_keyword($id),
+                'edit'      => get_edit_post_link($id, 'raw'),
             ];
             if ($in === 0) { $orphans++; } else { $thin++; }
         }
@@ -230,15 +240,23 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
         $limit  = isset($_POST['limit']) ? min(200, max(1, (int) $_POST['limit'])) : 50;
         $offset = isset($_POST['offset']) ? max(0, (int) $_POST['offset']) : 0;
 
-        $rows = IL_Suggestions::query([
+        $args = [
             'status' => $status === 'all' ? '' : $status,
             'limit'  => $limit,
             'offset' => $offset,
-        ]);
+        ];
+        // Zo kan het Suggesties-tabblad ook één doelpagina tonen in plaats van alles.
+        if (!empty($_POST['target_id'])) {
+            $args['target_id'] = (int) $_POST['target_id'];
+        }
+
+        $rows = IL_Suggestions::query($args);
 
         wp_send_json_success([
-            'rows'   => IL_Suggester::decorate($rows),
-            'counts' => IL_Suggestions::count_by_status(),
+            'rows'      => IL_Suggester::decorate($rows),
+            'counts'    => IL_Suggestions::count_by_status(),
+            'target_id' => isset($args['target_id']) ? $args['target_id'] : 0,
+            'target_title' => isset($args['target_id']) ? get_the_title($args['target_id']) : '',
         ]);
     }
 
@@ -437,10 +455,21 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
             ];
         }
 
-        $links = [];
+        // Randen die naar een knoop wijzen die we niet tekenen moeten eruit.
+        // De graafbibliotheek gooit een fout op een onbekende id en tekent dan
+        // helemáál niets meer — op de live site waren vier van de 1557 randen
+        // genoeg om het hele scherm leeg te laten.
+        $bekend   = array_flip($ids);
+        $links    = [];
+        $overgeslagen = 0;
+
         foreach (IL_Graph_Scanner::edges() as $e) {
             $s = (int) $e['source_id'];
             $t = (int) $e['target_id'];
+            if (!isset($bekend[$s], $bekend[$t])) {
+                $overgeslagen++;
+                continue;
+            }
             $links[] = [
                 'source' => $s,
                 'target' => $t,
@@ -448,7 +477,13 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
             ];
         }
 
-        wp_send_json_success(['nodes' => $nodes, 'links' => $links]);
+        wp_send_json_success([
+            'nodes'   => $nodes,
+            'links'   => $links,
+            // Links naar post-types die we niet beheren (case studies, vacatures).
+            // Ze tellen wel mee voor de linkdichtheid, maar staan niet in de graaf.
+            'skipped' => $overgeslagen,
+        ]);
     }
 
     public function ajax_profile() {
@@ -565,12 +600,12 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
         <section class="rr-il-panel is-active" data-panel="overzicht">
             <div class="rr-il-toolbar">
                 <button id="rr-il-scan-btn" class="button button-primary"><?php esc_html_e('Scan interne links', 'rankrepair'); ?></button>
-                <button id="rr-il-bulk-btn" class="button"><?php esc_html_e('Genereer suggesties', 'rankrepair'); ?></button>
-                <button id="rr-il-export-btn" class="button"><?php esc_html_e('Exporteer CSV', 'rankrepair'); ?></button>
-                <div id="rr-il-progress" class="rr-il-progress" style="display:none;">
-                    <div class="rr-il-progress-bar"><span id="rr-il-progress-fill"></span></div>
-                    <span id="rr-il-progress-txt">0 / 0</span>
-                </div>
+                <button id="rr-il-bulk-btn" class="button" data-label="<?php esc_attr_e('Genereer suggesties', 'rankrepair'); ?>"><?php esc_html_e('Genereer suggesties', 'rankrepair'); ?></button>
+                <button id="rr-il-export-btn" class="button" data-label="<?php esc_attr_e('Exporteer CSV', 'rankrepair'); ?>"><?php esc_html_e('Exporteer CSV', 'rankrepair'); ?></button>
+                <label class="rr-il-check-inline">
+                    <input type="checkbox" id="rr-il-only-content" checked>
+                    <?php esc_html_e('alleen pagina\'s met eigen tekst', 'rankrepair'); ?>
+                </label>
             </div>
 
             <div class="rr-il-stats">
@@ -583,16 +618,17 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
             <table class="rr-il-table widefat">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e('Titel', 'rankrepair'); ?></th>
-                        <th><?php esc_html_e('Type', 'rankrepair'); ?></th>
+                        <th class="rr-il-col-check"><input type="checkbox" id="rr-il-check-all" title="<?php esc_attr_e('Alles op deze lijst aanvinken', 'rankrepair'); ?>"></th>
+                        <th colspan="2"><?php esc_html_e('Pagina', 'rankrepair'); ?></th>
                         <th><?php esc_html_e('Inkomend', 'rankrepair'); ?></th>
                         <th><?php esc_html_e('Uitgaand', 'rankrepair'); ?></th>
+                        <th><?php esc_html_e('Woorden', 'rankrepair'); ?></th>
                         <th><?php esc_html_e('Suggesties', 'rankrepair'); ?></th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody id="rr-il-tbody">
-                    <tr><td colspan="6"><?php esc_html_e('Klik op "Scan interne links" om te beginnen.', 'rankrepair'); ?></td></tr>
+                    <tr><td colspan="8"><?php esc_html_e('Klik op "Scan interne links" om te beginnen.', 'rankrepair'); ?></td></tr>
                 </tbody>
             </table>
         </section>
@@ -611,9 +647,10 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
                     <option value="failed"><?php esc_html_e('Mislukt', 'rankrepair'); ?></option>
                     <option value="all"><?php esc_html_e('Alles', 'rankrepair'); ?></option>
                 </select>
-                <button id="rr-il-approve-all" class="button"><?php esc_html_e('Alles op deze pagina goedkeuren', 'rankrepair'); ?></button>
-                <span class="rr-il-hint"><?php esc_html_e('Ankertekst is aanpasbaar: klik erop, typ, en druk op enter.', 'rankrepair'); ?></span>
+                <button id="rr-il-approve-all" class="button" data-label="<?php esc_attr_e('Alles hieronder goedkeuren', 'rankrepair'); ?>"><?php esc_html_e('Alles hieronder goedkeuren', 'rankrepair'); ?></button>
+                <span class="rr-il-hint"><?php esc_html_e('Ankertekst aanpassen? Klik erop, typ, en druk op enter.', 'rankrepair'); ?></span>
             </div>
+            <div id="rr-il-scope" class="rr-il-scope" style="display:none;"></div>
             <div id="rr-il-suggestions"><p class="rr-il-empty"><?php esc_html_e('Nog geen suggesties geladen.', 'rankrepair'); ?></p></div>
         </section>
         <?php
@@ -628,11 +665,7 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
                 <?php esc_html_e('Van elke wijziging bewaren we bovendien een kopie van de pagina zoals hij was. Bij Gutenberg en de klassieke editor legt WordPress daarnaast een revisie vast; bij Elementor niet, omdat revisies de postmeta waar Elementor in werkt niet meenemen — daar is onze eigen kopie de terugweg.', 'rankrepair'); ?>
             </div>
             <div class="rr-il-toolbar">
-                <button id="rr-il-apply-btn" class="button button-primary"><?php esc_html_e('Plaats goedgekeurde links', 'rankrepair'); ?></button>
-                <div id="rr-il-apply-progress" class="rr-il-progress" style="display:none;">
-                    <div class="rr-il-progress-bar"><span id="rr-il-apply-fill"></span></div>
-                    <span id="rr-il-apply-txt">0 / 0</span>
-                </div>
+                <button id="rr-il-apply-btn" class="button button-primary" data-label="<?php esc_attr_e('Plaats goedgekeurde links', 'rankrepair'); ?>"><?php esc_html_e('Plaats goedgekeurde links', 'rankrepair'); ?></button>
             </div>
             <div id="rr-il-apply-log" class="rr-il-log"></div>
         </section>
@@ -643,7 +676,10 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
         ?>
         <section class="rr-il-panel" data-panel="data">
             <div class="rr-il-data">
-                <div id="rr-il-graph" class="rr-il-graph"><p class="rr-il-empty"><?php esc_html_e('Graaf wordt opgebouwd…', 'rankrepair'); ?></p></div>
+                <div>
+                    <div id="rr-il-graph" class="rr-il-graph"><p class="rr-il-empty"><?php esc_html_e('Graaf wordt opgebouwd…', 'rankrepair'); ?></p></div>
+                    <p id="rr-il-graph-note" class="rr-il-graph-note"></p>
+                </div>
                 <aside class="rr-il-sidebar">
                     <h3><?php esc_html_e('Linkprofiel', 'rankrepair'); ?></h3>
                     <div id="rr-il-metrics"></div>

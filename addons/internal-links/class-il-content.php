@@ -147,7 +147,9 @@ class IL_Content {
         $all  = self::segments($post);
         $body = [];
         foreach ($all as $seg) {
-            if ($seg['kind'] === 'heading') {
+            // Koppen niet, en tabellen/code/formulieren ook niet — zie
+            // kind_from_html() in de adapter-basis.
+            if ($seg['kind'] === 'heading' || $seg['kind'] === 'other') {
                 continue;
             }
             if (IL_Text::word_count($seg['text']) < 12) {

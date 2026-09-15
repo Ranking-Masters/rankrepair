@@ -268,8 +268,15 @@ class IL_Gates {
         }
         // Een losse kopregel of bijschrift van een paar woorden is geen zin om
         // een link aan op te hangen, ook al matcht het onderwerp.
-        if (IL_Text::word_count($host) < 6) {
+        $woorden = IL_Text::word_count($host);
+        if ($woorden < 6) {
             return __('de zin is te kort om een link te dragen', 'rankrepair');
+        }
+        // En andersom: veertig woorden zonder eindleesteken is geen zin maar een
+        // platgeslagen tabel of opsomming. Kwam boven op een vergelijkingstabel
+        // die als één blok tekst werd gelezen.
+        if ($woorden > 40 && IL_Text::terminal_punctuation($host) === '') {
+            return __('dit is geen lopende zin maar een tabel of opsomming', 'rankrepair');
         }
         $terms = isset($ctx['target_terms']) ? (array) $ctx['target_terms'] : [];
         if (empty($terms)) {

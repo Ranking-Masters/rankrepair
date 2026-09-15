@@ -245,6 +245,17 @@ gate_rejects(
     'G8 blokkeert een link in een zin van drie woorden'
 );
 
+// Een vergelijkingstabel wordt platgeslagen tot één "zin" van vijftig woorden
+// zonder punt. Kwam boven op de echte site, op een tabel met Core Web Vitals.
+$tabel = '<p>Metric Betekenis Richtlijn LCP Largest Contentful Paint hoe snel de hoofdinformatie laadt CLS '
+       . 'Cumulative Layout Shift hoe stabiel de pagina laadt geen verspringende elementen INP Interaction to '
+       . 'Next Paint hoe snel de site reageert op input optimaliseer zo en let daarbij op de volgorde</p>';
+gate_rejects(
+    judge_wrap($tabel, 'Cumulative Layout Shift', [], ['target_terms' => ['cumulative', 'layout']]),
+    'G8',
+    'G8 blokkeert een platgeslagen tabel die als één lange zin wordt gelezen'
+);
+
 /* ==================================================== G9 één per alinea */
 
 gate_rejects(
