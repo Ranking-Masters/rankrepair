@@ -55,6 +55,23 @@ class IL_Gates {
     private static $superlatives = [
         'beste', 'grootste', 'goedkoopste', 'snelste', 'mooiste', 'nummer 1', 'meest',
         'gegarandeerd', 'altijd', 'nooit', 'iedereen', 'perfecte', 'ultieme', 'onmisbare',
+        'belangrijkste', 'krachtigste', 'sterkste', 'slimste', 'enige', 'grootste',
+    ];
+
+    /**
+     * Nederlandse overtreffende trap eindigt op -ste. Een lijst blijft altijd
+     * incompleet, dus vangen we de vorm; deze woorden zijn de uitzonderingen die
+     * geen claim zijn maar volgorde of nuance aanduiden.
+     */
+    private static $superlative_exceptions = [
+        'eerste', 'tweede', 'laatste', 'vaste', 'juiste', 'volgende', 'vorige',
+        'naaste', 'kaste', 'kuste', 'rustte', 'passte', 'beste',
+    ];
+
+    /** Woorden die een hoeveelheid aanduiden; die mogen niet zomaar verdwijnen. */
+    private static $quantity_words = [
+        'honderden', 'duizenden', 'tientallen', 'miljoen', 'miljard', 'procent',
+        'dubbel', 'helft', 'kwart', 'meerdere', 'talloze', 'enkele', 'diverse',
     ];
 
     /**
@@ -172,17 +189,13 @@ class IL_Gates {
             return __('ankertekst bestaat alleen uit stopwoorden', 'rankrepair');
         }
 
-        // Het focus-keyword van de doelpagina mag altijd, ook als het kort is —
-        // dat is per definitie waar die pagina over gaat.
-        $kw = isset($ctx['target_keyword']) ? IL_Text::normalize_anchor($ctx['target_keyword']) : '';
-        if ($kw !== '' && IL_Text::normalize_anchor($anchor) === $kw) {
-            return null;
-        }
-
         $woorden = preg_split('/\s+/u', $anchor);
         $eerste  = mb_strtolower($woorden[0], 'UTF-8');
         $laatste = mb_strtolower(rtrim($woorden[count($woorden) - 1], ',.:;!?'), 'UTF-8');
 
+        // Deze twee gelden altijd, ook voor het focus-keyword. Een keyword dat
+        // als vraag is ingevuld ("Hoe werkt Google Ads?") komt op echte sites
+        // gewoon voor, en is als ankertekst nog steeds onbruikbaar.
         if (in_array($eerste, self::$anchor_openers, true)) {
             return sprintf(__('"%s" is een zinsbegin, geen ankertekst', 'rankrepair'), $anchor);
         }
@@ -191,7 +204,14 @@ class IL_Gates {
         if (in_array($laatste, self::$anchor_openers, true) || IL_Text::is_stopword($laatste)) {
             return sprintf(__('"%s" loopt halverwege een zin af', 'rankrepair'), $anchor);
         }
+
+        // Eén inhoudswoord mag wél, maar alleen als het exact het focus-keyword
+        // van de doelpagina is — dan is het per definitie waar die pagina over gaat.
         if (count($inhoud) < 2) {
+            $kw = isset($ctx['target_keyword']) ? IL_Text::normalize_anchor($ctx['target_keyword']) : '';
+            if ($kw !== '' && IL_Text::normalize_anchor($anchor) === $kw) {
+                return null;
+            }
             return sprintf(__('"%s" is te weinig om een bestemming mee aan te duiden', 'rankrepair'), $anchor);
         }
         return null;
@@ -355,6 +375,37 @@ class IL_Gates {
                 return sprintf(__('er wordt een claim toegevoegd ("%s")', 'rankrepair'), $word);
             }
         }
+        // En de vorm, voor alles wat niet in de lijst staat.
+        if (preg_match_all('/\b(\p{L}{4,}ste)\b/u', $added, $mm)) {
+            foreach ($mm[1] as $woord) {
+                if (in_array($woord, self::$superlative_exceptions, true)) { continue; }
+                if (strpos($before, $woord) !== false) { continue; }
+                return sprintf(__('er wordt een claim toegevoegd ("%s")', 'rankrepair'), $woord);
+            }
+        }
+
+        /*
+         * De andere kant op: wat er stond mag niet stilletjes verdwijnen.
+         *
+         * Uit een proefronde op echte content: "bepaald door honderden factoren"
+         * werd "bepaald door de belangrijkste ranking factors". Het woordaantal
+         * bleef binnen de marge, maar "honderden" was weg — een feit minder, zonder
+         * dat iemand dat aan de lengte zou zien.
+         */
+        $anchor_tokens = array_flip(IL_Text::tokenize($c['anchor']));
+        $na            = array_flip(IL_Text::tokenize($after));
+        $weg           = [];
+        foreach (IL_Text::remove_stopwords(IL_Text::tokenize($before)) as $token) {
+            if (isset($na[$token]) || isset($anchor_tokens[$token])) { continue; }
+            $weg[$token] = true;
+            if (in_array($token, self::$quantity_words, true) || preg_match('/^\d/', $token)) {
+                return sprintf(__('"%s" verdwijnt uit de zin; dat is een feit minder', 'rankrepair'), $token);
+            }
+        }
+        if (count($weg) > 2) {
+            return sprintf(__('er verdwijnen %d woorden uit de zin; dit is geen minimale aanpassing', 'rankrepair'), count($weg));
+        }
+
         return null;
     }
 

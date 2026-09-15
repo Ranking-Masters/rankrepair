@@ -84,6 +84,24 @@ De fixtures in `test-il-gates.php` zijn echte bugs, de meeste uit het
 interne-linktraject voor ferienhausniederlande.de. Voeg bij een nieuwe klacht
 eerst de fixture toe en dan pas de gate.
 
+## Over het AI-model
+
+De plugin praat via `rr_ai_complete()` met OpenRouter of Google AI Studio. Twee
+dingen die je moet weten als je het model wisselt:
+
+- **Redeneermodellen hebben budget nodig.** `google/gemini-3.8-flash` (de
+  standaard) besteedt eerst tokens aan denkwerk. Met een krappe `max_tokens`
+  komt er een leeg antwoord uit en niet een fout die zegt waarom. Vandaar een
+  standaard van 1000 en 1500 voor de planner.
+- **`reasoning: low` staat standaard aan** en scheelt een factor 39 in kosten bij
+  een korte opdracht. Helemaal uitzetten weigeren deze endpoints
+  ("Reasoning is mandatory for this endpoint").
+
+Gemeten op de echte content van rankingmasters.nl: ongeveer **$0,009 en 17
+seconden per suggestie**. Voor een reviewronde is dat prima; voor een bulkronde
+over honderden pagina's is het uren, dus daar wil je de wrap-modus voor gebruiken
+— die kost niets en heeft geen model nodig.
+
 ## Wat er bewust niet in zit
 
 - **Cron.** Er is geen geplande plaatsing. Je wilt erbij zitten als een tool

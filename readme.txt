@@ -66,7 +66,8 @@ Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen
 * Werkt in Gutenberg, de klassieke editor en Elementor via één gedeelde content-laag; uitbreidbaar met de filter `rr_il_content_adapters`.
 * 17 deterministische controles voor plaatsing (zelf-links, ankervorm, intro-alinea, eerste zin, topic-match, linkdichtheid, anker-overoptimalisatie, anker-ambiguïteit, verzonnen claims, tekstintegriteit).
 * Eén ankertekst wijst naar één bestemming, en ankers die grammaticaal een zinsbegin zijn worden geweigerd — getoetst op de echte content van rankingmasters.nl.
-* Fix: het standaard OpenRouter-model stond op google/gemini-2.0-flash-001, dat niet meer bestaat; wie het modelveld leeg liet kreeg een foutmelding.
+* Fix: het standaard OpenRouter-model stond op google/gemini-2.0-flash-001, dat niet meer bestaat; wie het modelveld leeg liet kreeg een foutmelding. Nu google/gemini-3.8-flash.
+* AI-aanroepen sturen `reasoning: low` mee en hebben een ruimer tokenbudget. Redeneermodellen besteden een deel van hun budget aan denkwerk; met de oude 300 tokens kwam er bij zo'n model niets uit, en de rekening was 39x hoger.
 * Fix: add-ons worden op 'init' geladen in plaats van bij 'plugins_loaded', zodat WordPress geen "textdomain te vroeg geladen"-notice meer geeft.
 * Drie plaatsingsmodi: bestaande woorden linken, zin minimaal herschrijven, korte bijzin toevoegen. Zonder AI-key werkt de eerste modus volledig.
 * Elke geplaatste link is per stuk terug te draaien, ook nadat de pagina daarna is bewerkt. WordPress bewaart een revisie van elke wijziging.

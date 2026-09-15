@@ -183,9 +183,22 @@ gate_rejects(
     'G5 blokkeert een anker dat op een voegwoord eindigt'
 );
 
-// Maar het focus-keyword van de doelpagina mag altijd, ook als het kort is.
+// Het focus-keyword mag kort zijn …
 ok(judge_wrap($goed, 'linkbuilding', [], ['target_keyword' => 'linkbuilding'])['ok'],
    'G5 laat het focus-keyword van het doel door, ook al is het één woord');
+
+// … maar een keyword dat als vraag is ingevuld blijft een slechte ankertekst.
+// Op echte sites staat dat er gewoon: een pagina met focus-keyword "Hoe werkt
+// Google Ads?" leverde het anker "hoe werkt Google Ads" op, midden in een opsomming.
+$vraagkw = '<p>Autoriteit kost tijd. Veel mensen vragen zich af hoe werkt Google Ads eigenlijk in de praktijk.</p>';
+gate_rejects(
+    judge_wrap($vraagkw, 'hoe werkt Google Ads', [], [
+        'target_terms'   => ['google', 'ads'],
+        'target_keyword' => 'Hoe werkt Google Ads?',
+    ]),
+    'G5',
+    'G5 weigert een vraag als ankertekst, ook als het focus-keyword zo is ingevuld'
+);
 
 /* =============================================================== G6 intro */
 
@@ -306,6 +319,42 @@ gate_rejects(
     ),
     'G14',
     'G14 blokkeert een superlatief die er niet stond'
+);
+
+// Uit de proefronde op echte content: een herschrijving die een feit weglaat.
+gate_rejects(
+    judge_rewrite(
+        '<p>Inleiding hier. De positie wordt bepaald door honderden factoren binnen drie pijlers.</p>',
+        'ranking factoren',
+        'De positie wordt bepaald door honderden factoren binnen drie pijlers.',
+        'De positie wordt bepaald door de ranking factoren binnen drie pijlers.',
+        ['target_terms' => ['ranking', 'factoren']]
+    ),
+    'G14',
+    'G14 blokkeert een herschrijving waaruit een hoeveelheid verdwijnt'
+);
+
+gate_rejects(
+    judge_rewrite(
+        '<p>Inleiding hier. Backlinks bouw je op met goede content en geduld.</p>',
+        'linkbuilding voor backlinks',
+        'Backlinks bouw je op met goede content en geduld.',
+        'Backlinks bouw je op met belangrijkste linkbuilding voor backlinks.'
+    ),
+    'G14',
+    'G14 herkent een overtreffende trap die niet in de lijst staat'
+);
+
+gate_rejects(
+    judge_rewrite(
+        '<p>Inleiding hier. Een sterke ankertekst, nette opbouw en relevante content helpen de lezer verder.</p>',
+        'goede interne links',
+        'Een sterke ankertekst, nette opbouw en relevante content helpen de lezer verder.',
+        'Goede interne links helpen de lezer verder.',
+        ['target_terms' => ['content', 'ankertekst']]
+    ),
+    'G14',
+    'G14 blokkeert een herschrijving die halve zin vervangt in plaats van aanvult'
 );
 
 /* ================================================= G15 herschrijfbegrenzing */

@@ -330,7 +330,7 @@ class IL_Planner {
             . "Antwoord UITSLUITEND met JSON, zonder uitleg:\n"
             . '{"alinea":"<ref>","modus":"rewrite","anker":"...","zin_voor":"...","zin_na":"..."}';
 
-        $resp = rr_ai_complete($prompt, ['max_tokens' => 800, 'temperature' => 0.3]);
+        $resp = rr_ai_complete($prompt, ['max_tokens' => 1500, 'temperature' => 0.3]);
         if (is_wp_error($resp) || stripos(trim($resp), 'GEEN') === 0) {
             return null;
         }

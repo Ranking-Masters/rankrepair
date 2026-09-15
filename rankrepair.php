@@ -599,9 +599,16 @@ function rr_decrypt_key($stored) {
  */
 function rr_ai_complete($prompt, $args = []) {
     $args = wp_parse_args($args, [
-        'max_tokens'  => 300,
+        // Ruim bemeten, want een redeneermodel besteedt een deel van zijn budget
+        // aan denkwerk vóór het antwoord. Een cap kost niets zolang hij niet wordt
+        // gehaald; te krap zetten levert een leeg antwoord op.
+        'max_tokens'  => 1000,
         'temperature' => 0.5,
-        'timeout'     => 30,
+        'timeout'     => 60,
+        // Alleen OpenRouter. 'low' houdt redeneermodellen bruikbaar én goedkoop:
+        // op een korte opdracht scheelde dat een factor 39 in kosten. Helemaal
+        // uitzetten weigeren sommige endpoints ("Reasoning is mandatory").
+        'reasoning'   => 'low',
     ]);
 
     $api_key = rr_decrypt_key(get_option('rr_gemini_api_key', ''));
@@ -612,10 +619,10 @@ function rr_ai_complete($prompt, $args = []) {
     $model    = trim(get_option('rr_ai_model', ''));
 
     if ($provider === 'openrouter') {
-        // Gecontroleerd op 15 sep 2026: google/gemini-2.0-flash-001 bestaat niet
-        // meer op OpenRouter en gaf "No endpoints found". Wie het modelveld leeg
-        // liet kreeg dus een foutmelding in plaats van een resultaat.
-        if (empty($model)) { $model = 'google/gemini-2.5-flash-lite'; }
+        // Gecontroleerd op 15 sep 2026 tegen de modellenlijst van OpenRouter.
+        // De oude standaard google/gemini-2.0-flash-001 bestaat niet meer en gaf
+        // "No endpoints found"; wie het modelveld leeg liet kreeg dus een fout.
+        if (empty($model)) { $model = 'google/gemini-3.8-flash'; }
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', [
             'headers' => [
                 'Content-Type'  => 'application/json',
@@ -623,12 +630,13 @@ function rr_ai_complete($prompt, $args = []) {
                 'HTTP-Referer'  => home_url(),
                 'X-Title'       => get_bloginfo('name'),
             ],
-            'body' => wp_json_encode([
+            'body' => wp_json_encode(array_filter([
                 'model'       => $model,
                 'messages'    => [['role' => 'user', 'content' => $prompt]],
                 'temperature' => (float) $args['temperature'],
                 'max_tokens'  => (int) $args['max_tokens'],
-            ]),
+                'reasoning'   => $args['reasoning'] ? ['effort' => (string) $args['reasoning']] : null,
+            ], function ($v) { return $v !== null; })),
             'timeout' => (int) $args['timeout'],
         ]);
         if (is_wp_error($response)) { return $response; }
@@ -659,7 +667,7 @@ function rr_ai_complete($prompt, $args = []) {
     }
 
     if (empty($text)) {
-        return new WP_Error('ai_empty', __('AI gaf geen resultaat terug.', 'rankrepair'));
+        return new WP_Error('ai_empty', __('AI gaf geen resultaat terug. Bij een redeneermodel betekent dat meestal dat het tokenbudget op ging aan denkwerk — verhoog max_tokens of kies een lichter model.', 'rankrepair'));
     }
     return trim($text);
 }
