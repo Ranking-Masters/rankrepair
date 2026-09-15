@@ -684,12 +684,15 @@ class RR_Addon_Internal_Links extends RR_Addon_Base {
                     <h3><?php esc_html_e('Linkprofiel', 'rankrepair'); ?></h3>
                     <div id="rr-il-metrics"></div>
                     <h3><?php esc_html_e('Legenda', 'rankrepair'); ?></h3>
+                    <p class="rr-il-legend-intro">
+                        <?php esc_html_e('Elke bol is een pagina, elke lijn een interne link. Bollen zonder lijn zijn nergens vandaan bereikbaar.', 'rankrepair'); ?>
+                    </p>
                     <ul class="rr-il-legend">
-                        <li><span class="rr-il-dot" style="background:#FF4D6D"></span><?php esc_html_e('orphan — 0 inkomend', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#FFB020"></span><?php esc_html_e('thin — 1 inkomend', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#2DD4BF"></span><?php esc_html_e('ok — 2 of meer', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#A78BFA"></span><?php esc_html_e('hub — 8 of meer', 'rankrepair'); ?></li>
-                        <li><span class="rr-il-dot" style="background:#F472B6"></span><?php esc_html_e('lijn — door RankRepair geplaatst', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#FF3D6E"></span><?php esc_html_e('geen enkele inkomende link', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#FFAE1A"></span><?php esc_html_e('één inkomende link', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#14B8A6"></span><?php esc_html_e('twee of meer', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-dot" style="background:#B79CFF"></span><?php esc_html_e('knooppunt, acht of meer', 'rankrepair'); ?></li>
+                        <li><span class="rr-il-line" style="background:#F472B6"></span><?php esc_html_e('link die RankRepair zelf plaatste', 'rankrepair'); ?></li>
                     </ul>
                 </aside>
             </div>

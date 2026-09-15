@@ -605,12 +605,15 @@
             var staatVan = {};
             data.nodes.forEach(function (n) { staatVan[n.id] = n.state; });
 
-            // Losse knopen trekken de graaf uit elkaar en maken het geheel
-            // onleesbaar. De weespagina's staan in het overzicht, niet hier.
+            // Álle pagina's, ook die zonder enkele link. Juist die losse bollen
+            // zijn waar het om gaat: dat zijn de pagina's die nergens vandaan
+            // bereikbaar zijn. Ze verdwijnen niet uit beeld, ze zweven eromheen.
             var verbonden = {};
             data.links.forEach(function (l) { verbonden[l.source] = true; verbonden[l.target] = true; });
-            var nodes = data.nodes.filter(function (n) { return verbonden[n.id]; });
-            var losse = data.nodes.length - nodes.length;
+
+            var nodes = data.nodes;
+            nodes.forEach(function (n) { n.los = !verbonden[n.id]; });
+            var losse = nodes.filter(function (n) { return n.los; }).length;
 
             var idVan = function (x) { return (x && typeof x === 'object') ? x.id : x; };
             var linkKleur = function (l) {
@@ -667,19 +670,32 @@
                         RRIL.startOrbit(el, nodes);
                     });
 
-                // Meer lucht tussen de knopen: standaard klit alles samen tot
-                // één bal en dan zie je geen structuur meer.
-                RRIL.graph.d3Force('charge').strength(-150).distanceMax(600);
-                RRIL.graph.d3Force('link').distance(function (l) { return l.ours ? 30 : 55; });
-                RRIL.graph.d3VelocityDecay(0.3);
+                /* Krachten afstemmen op een graaf met veel losse knopen.
+                   Losse bollen voelen alleen afstoting en de middelpuntkracht;
+                   met een begrensd bereik komen ze tot rust in een schil om de
+                   verbonden kern heen — precies wat je in Obsidian ziet. Zonder
+                   die begrenzing duwen 420 weespagina's het hele beeld uit elkaar. */
+                /* Afstoting per knoop. Verbonden pagina's duwen elkaar stevig weg
+                   zodat de kern uitwaaiert en je de lijnen ziet. Losse bollen
+                   duwen nauwelijks: anders blazen 420 weespagina's zichzelf op
+                   tot een schil die de rest naar een speldenknop in het midden
+                   drukt. Zo blijven ze een halo en blijft de kern leesbaar. */
+                RRIL.graph.d3Force('charge')
+                    .strength(function (n) { return n.los ? -14 : -170; })
+                    .distanceMax(420);
+                // Zwakkere trekkracht op de links: anders klapt de verbonden kern
+                // in tot één bal en zie je de lijnen niet meer die het juist moeten
+                // doen. Nu ademt de kern en blijft de schil eromheen intact.
+                RRIL.graph.d3Force('link').distance(function (l) { return l.ours ? 40 : 65; }).strength(0.35);
+                RRIL.graph.d3VelocityDecay(0.26);
             } catch (e) {
                 el.innerHTML = '<p class="rr-il-empty rr-il-error">De graaf kon niet worden opgebouwd: ' +
                     RRIL.esc(e.message) + '</p>';
                 return;
             }
 
-            var noot = nodes.length + ' verbonden pagina\'s, ' + data.links.length + ' links';
-            if (losse) { noot += ' · ' + losse + ' weespagina\'s niet getoond'; }
+            var noot = nodes.length + ' pagina\'s, ' + data.links.length + ' interne links';
+            if (losse) { noot += ' · ' + losse + ' pagina\'s zonder enige link — de losse bollen eromheen'; }
             if (data.skipped) { noot += ' · ' + data.skipped + ' links naar andere post-types overgeslagen'; }
             noot += ' — slepen om te draaien, scrollen om te zoomen, klik op een bol om de pagina te bewerken';
             $('#rr-il-graph-note').text(noot);
@@ -695,14 +711,25 @@
         startOrbit: function (el, nodes) {
             // Afstand afleiden uit hoe ver de knopen uit elkaar zijn gewaaierd,
             // zodat het geheel past ongeacht de omvang van de site.
-            var verste = 0;
+            /* Richten op de verbonden kern, niet op de hele wolk. De losse bollen
+               zweven ver uit elkaar en zouden de camera zo ver terugduwen dat de
+               kern — waar de lijnen zitten en waar je naar kijkt — een speldenknop
+               wordt. Op deze afstand vult de kern het beeld en valt een flink deel
+               van de schil er nog omheen; de rest vind je door uit te zoomen. */
+            var kern = 0;
             nodes.forEach(function (n) {
+                if (n.los) { return; }
                 var d = Math.hypot(n.x || 0, n.y || 0, n.z || 0);
-                if (d > verste) { verste = d; }
+                if (d > kern) { kern = d; }
             });
-            var straal = Math.max(400, verste * 1.85);
+            if (!kern) {
+                nodes.forEach(function (n) {
+                    kern = Math.max(kern, Math.hypot(n.x || 0, n.y || 0, n.z || 0));
+                });
+            }
+            var straal = Math.max(400, kern * 2.4);
             var hoek = 0;
-            var hoogte = verste * 0.25;
+            var hoogte = kern * 0.3;
             var actief = true;
 
             RRIL.graph.cameraPosition({ x: 0, y: hoogte, z: straal }, { x: 0, y: 0, z: 0 }, 1200);

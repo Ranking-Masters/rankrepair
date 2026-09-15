@@ -297,6 +297,15 @@
     box-shadow: 0 0 8px currentColor;
 }
 .rr-il-legend li span[style] { box-shadow: 0 0 10px -1px; }
+.rr-il-legend-intro {
+    margin: -4px 0 10px; font-size: 12px; line-height: 1.5;
+    color: var(--rr-gray-600, #4B5563);
+}
+/* Een lijntje in plaats van een bolletje: dit gaat over een verbinding. */
+.rr-il-line {
+    width: 14px; height: 3px; border-radius: 2px;
+    display: inline-block; flex: 0 0 auto; box-shadow: 0 0 8px currentColor;
+}
 
 /* ----------------------------------------------------------- instellingen */
 
