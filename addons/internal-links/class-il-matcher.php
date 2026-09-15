@@ -8,32 +8,40 @@ class IL_Matcher {
     /** Boost-factor wanneer target- en kandidaat-keyword overlappen. */
     const KEYWORD_BOOST = 1.5;
 
-    public static function score_candidates(array $target, array $candidates, int $top_n = 3): array {
+    /**
+     * @param array      $target     ['tokens' => lijst of term=>aantal, 'keyword' => string]
+     * @param array      $candidates id => zelfde vorm als $target
+     * @param int        $top_n
+     * @param array|null $idf        vooraf berekende IDF (uit IL_Index); anders
+     *                               wordt hij over target + kandidaten berekend
+     */
+    public static function score_candidates(array $target, array $candidates, int $top_n = 3, ?array $idf = null): array {
         $top_n = max(1, (int) $top_n);
 
-        $target_tokens = isset($target['tokens']) ? (array) $target['tokens'] : [];
+        $target_tokens = self::as_counts(isset($target['tokens']) ? (array) $target['tokens'] : []);
         if (empty($target_tokens) || empty($candidates)) {
             return [];
         }
 
-        // Document-frequency over target + alle kandidaten (voor IDF).
-        $docs = [];
-        $docs['__target__'] = $target_tokens;
-        foreach ($candidates as $id => $c) {
-            $docs[$id] = isset($c['tokens']) ? (array) $c['tokens'] : [];
-        }
-
-        $doc_count = count($docs);
-        $df = [];
-        foreach ($docs as $tokens) {
-            foreach (array_unique($tokens) as $term) {
-                $df[$term] = isset($df[$term]) ? $df[$term] + 1 : 1;
+        if ($idf === null) {
+            // Document-frequency over target + alle kandidaten.
+            $docs = ['__target__' => $target_tokens];
+            foreach ($candidates as $id => $c) {
+                $docs[$id] = self::as_counts(isset($c['tokens']) ? (array) $c['tokens'] : []);
             }
-        }
-        $idf = [];
-        foreach ($df as $term => $n) {
-            // Gladde IDF, altijd > 0.
-            $idf[$term] = log(($doc_count + 1) / ($n + 1)) + 1;
+
+            $doc_count = count($docs);
+            $df = [];
+            foreach ($docs as $counts) {
+                foreach (array_keys($counts) as $term) {
+                    $df[$term] = isset($df[$term]) ? $df[$term] + 1 : 1;
+                }
+            }
+            $idf = [];
+            foreach ($df as $term => $n) {
+                // Gladde IDF, altijd > 0.
+                $idf[$term] = log(($doc_count + 1) / ($n + 1)) + 1;
+            }
         }
 
         $target_vec = self::tfidf_vector($target_tokens, $idf);
@@ -42,7 +50,7 @@ class IL_Matcher {
 
         $scored = [];
         foreach ($candidates as $id => $c) {
-            $vec  = self::tfidf_vector((array) ($c['tokens'] ?? []), $idf);
+            $vec  = self::tfidf_vector(self::as_counts((array) ($c['tokens'] ?? [])), $idf);
             $sim  = self::cosine($target_vec, $vec);
             if ($sim <= 0) {
                 continue;
@@ -64,15 +72,32 @@ class IL_Matcher {
         return array_slice($scored, 0, $top_n);
     }
 
-    private static function tfidf_vector(array $tokens, array $idf) {
+    /**
+     * Accepteert zowel een platte lijst tokens als een term=>aantal-map.
+     * De index levert het tweede, losse aanroepen en tests het eerste.
+     */
+    private static function as_counts(array $tokens) {
         if (empty($tokens)) {
             return [];
         }
-        $tf = [];
-        foreach ($tokens as $t) {
-            $tf[$t] = isset($tf[$t]) ? $tf[$t] + 1 : 1;
+        if (array_keys($tokens) === range(0, count($tokens) - 1)) {
+            $counts = [];
+            foreach ($tokens as $t) {
+                $counts[$t] = isset($counts[$t]) ? $counts[$t] + 1 : 1;
+            }
+            return $counts;
         }
-        $len = count($tokens);
+        return $tokens;
+    }
+
+    private static function tfidf_vector(array $tf, array $idf) {
+        if (empty($tf)) {
+            return [];
+        }
+        $len = array_sum($tf);
+        if ($len <= 0) {
+            return [];
+        }
         $vec = [];
         foreach ($tf as $term => $count) {
             $w = ($count / $len) * (isset($idf[$term]) ? $idf[$term] : 0);

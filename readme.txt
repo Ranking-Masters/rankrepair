@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.7.2
+Stable tag: 1.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,19 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.0 =
+* Interne Links fase 2: goedgekeurde suggesties worden nu echt in de content geplaatst.
+* Werkt in Gutenberg, de klassieke editor en Elementor via één gedeelde content-laag; uitbreidbaar met de filter `rr_il_content_adapters`.
+* 16 deterministische controles voor plaatsing (zelf-links, ankervorm, intro-alinea, eerste zin, topic-match, linkdichtheid, anker-overoptimalisatie, verzonnen claims, tekstintegriteit).
+* Drie plaatsingsmodi: bestaande woorden linken, zin minimaal herschrijven, korte bijzin toevoegen. Zonder AI-key werkt de eerste modus volledig.
+* Elke geplaatste link is per stuk terug te draaien, ook nadat de pagina daarna is bewerkt. WordPress bewaart een revisie van elke wijziging.
+* Nieuw Data-scherm met een 3D-linkgraaf en profielmetingen (spreiding, ankerdiversiteit, dichtheid, wederkerigheid).
+* Suggesties staan nu in een tabel in plaats van een transient, en zijn te beoordelen, te bewerken en te exporteren.
+* Prestaties: de scan bouwt een tekstindex per post, zodat relevantie bepalen niet meer elke pagina opnieuw inleest.
+
+= 1.8.0 =
+* Interne Links fase 1: detectie van pagina's met 0 of 1 inkomende interne link, plus linksuggesties met ankertekst.
 
 = 1.6.1 =
 * Image Optimizer fix: na WebP-conversie worden hardcoded afbeeldings-URL's in post-content automatisch omgeschreven naar de nieuwe .webp-URL. Voorheen bleef het originele (verwijderde) .png/.jpg in content staan → 404 op afbeeldingen.

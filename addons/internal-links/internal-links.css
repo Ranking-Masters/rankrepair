@@ -1,22 +1,225 @@
-.rr-il-wrap { max-width: 1100px; }
-.rr-il-toolbar { display: flex; align-items: center; gap: 16px; margin: 16px 0; }
+/* Interne Links — admin UI
+   Kleuren volgen de RankRepair-tokens uit admin/css/admin-style.css. */
+
+.rr-il-wrap { max-width: 1240px; }
+
+/* ------------------------------------------------------------------- tabs */
+
+.rr-il-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--rr-gray-200, #E5E7EB);
+    margin: 16px 0 20px;
+    flex-wrap: wrap;
+}
+.rr-il-tab {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--rr-gray-500, #6B7280);
+    cursor: pointer;
+}
+.rr-il-tab:hover { color: var(--rr-gray-900, #111827); }
+.rr-il-tab.is-active {
+    color: var(--rr-primary, #6366F1);
+    border-bottom-color: var(--rr-primary, #6366F1);
+}
+.rr-il-pill {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--rr-gray-200, #E5E7EB);
+    color: var(--rr-gray-700, #374151);
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+}
+
+.rr-il-panel { display: none; }
+.rr-il-panel.is-active { display: block; }
+
+/* --------------------------------------------------------------- toolbar */
+
+.rr-il-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 16px;
+    flex-wrap: wrap;
+}
+.rr-il-hint { color: var(--rr-gray-500, #6B7280); font-size: 12px; }
 .rr-il-progress { display: flex; align-items: center; gap: 8px; }
-.rr-il-progress-bar { width: 220px; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
-.rr-il-progress-bar span { display: block; height: 100%; width: 0; background: #6366f1; transition: width .2s; }
-.rr-il-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
-.rr-il-stat { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; text-align: center; }
-.rr-il-stat-val { display: block; font-size: 24px; font-weight: 700; color: #111827; }
-.rr-il-stat-lbl { display: block; font-size: 12px; color: #6b7280; margin-top: 4px; }
+.rr-il-progress-bar {
+    width: 220px; height: 8px;
+    background: var(--rr-gray-200, #E5E7EB);
+    border-radius: 4px; overflow: hidden;
+}
+.rr-il-progress-bar span {
+    display: block; height: 100%; width: 0;
+    background: var(--rr-primary, #6366F1);
+    transition: width .2s;
+}
+
+.rr-il-notice {
+    background: var(--rr-blue-light, #DBEAFE);
+    border: 1px solid #BFDBFE;
+    color: var(--rr-blue-text, #1E40AF);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ----------------------------------------------------------------- stats */
+
+.rr-il-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+.rr-il-stat {
+    background: #fff;
+    border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+}
+.rr-il-stat-val { display: block; font-size: 24px; font-weight: 700; color: var(--rr-gray-900, #111827); }
+.rr-il-stat-lbl { display: block; font-size: 12px; color: var(--rr-gray-500, #6B7280); margin-top: 4px; }
+
 .rr-il-table { margin-top: 12px; background: #fff; }
-.rr-il-badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; color: #fff; }
-.rr-il-badge--orphan { background: #b32d2e; }
-.rr-il-badge--thin { background: #d97706; }
-#rr-il-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100000; }
-#rr-il-modal { position: fixed; top: 8%; left: 50%; transform: translateX(-50%); width: min(900px, 92vw); max-height: 80vh; overflow: auto; background: #fff; border-radius: 10px; z-index: 100001; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-#rr-il-modal-close { position: absolute; top: 10px; right: 14px; border: 0; background: none; font-size: 24px; cursor: pointer; line-height: 1; }
-.rr-il-modal-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-.rr-il-modal-table th, .rr-il-modal-table td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 13px; }
-.rr-il-context { color: #374151; font-style: italic; }
-.rr-il-muted { color: #9ca3af; font-size: 11px; }
-.rr-il-note { background: #fef3c7; border: 1px solid #fde68a; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
-.rr-il-modal-loading { padding: 40px; text-align: center; color: #6b7280; }
+.rr-il-badge {
+    display: inline-block; font-size: 11px; padding: 1px 6px;
+    border-radius: 4px; color: #fff; vertical-align: 1px;
+}
+.rr-il-badge--orphan { background: var(--rr-danger, #EF4444); }
+.rr-il-badge--thin   { background: var(--rr-warning-dark, #D97706); }
+
+/* ------------------------------------------------------------ suggesties */
+
+.rr-il-card {
+    background: #fff;
+    border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-left: 3px solid var(--rr-gray-300, #D1D5DB);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.rr-il-card--approved { border-left-color: var(--rr-success, #10B981); }
+.rr-il-card--applied  { border-left-color: var(--rr-primary, #6366F1); background: var(--rr-gray-50, #F9FAFB); }
+.rr-il-card--rejected { border-left-color: var(--rr-gray-300, #D1D5DB); opacity: .65; }
+.rr-il-card--failed   { border-left-color: var(--rr-danger, #EF4444); }
+
+.rr-il-card-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.rr-il-status {
+    display: inline-block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .03em; color: var(--rr-gray-500, #6B7280); margin-right: 6px;
+}
+.rr-il-meta { font-size: 12px; color: var(--rr-gray-500, #6B7280); white-space: nowrap; }
+
+.rr-il-anchor-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rr-il-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--rr-gray-400, #9CA3AF);
+}
+.rr-il-anchor {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    background: var(--rr-primary-light, #EDE9FE);
+    color: var(--rr-primary-text, #5B21B6);
+    font-weight: 600; cursor: text; min-width: 60px;
+}
+.rr-il-anchor:hover { outline: 1px dashed var(--rr-primary, #6366F1); }
+.rr-il-anchor-input { width: 260px; font-weight: 600; }
+
+.rr-il-preview {
+    margin: 0 0 6px; padding: 8px 10px;
+    background: var(--rr-gray-50, #F9FAFB);
+    border-radius: 6px; line-height: 1.6; color: var(--rr-gray-700, #374151);
+}
+.rr-il-preview mark {
+    background: #FDE68A; padding: 0 2px; border-radius: 2px; font-weight: 600;
+}
+.rr-il-preview-before {
+    margin: 0 0 6px; font-size: 12px; color: var(--rr-gray-500, #6B7280);
+    text-decoration: line-through; text-decoration-color: var(--rr-gray-300, #D1D5DB);
+}
+.rr-il-card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rr-il-editlink { font-size: 12px; margin-left: auto; }
+
+.rr-il-rejected {
+    background: var(--rr-gray-50, #F9FAFB);
+    border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;
+}
+.rr-il-rejected summary { cursor: pointer; color: var(--rr-gray-600, #4B5563); }
+.rr-il-rejected ul { margin: 8px 0 0 16px; }
+.rr-il-rejected code {
+    background: var(--rr-gray-200, #E5E7EB); padding: 0 4px; border-radius: 3px; font-size: 11px;
+}
+
+.rr-il-empty { color: var(--rr-gray-500, #6B7280); padding: 24px 0; }
+.rr-il-muted { color: var(--rr-gray-400, #9CA3AF); }
+.rr-il-error { color: var(--rr-danger-text, #991B1B); }
+
+/* ------------------------------------------------------------- toepassen */
+
+.rr-il-log {
+    max-height: 420px; overflow-y: auto;
+    background: #0b1020; color: #cbd5e1;
+    border-radius: 8px; padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7;
+}
+.rr-il-log:empty { display: none; }
+.rr-il-log--ok    { color: #6ee7b7; }
+.rr-il-log--warn  { color: #fcd34d; }
+.rr-il-log--muted { color: #94a3b8; }
+
+/* ------------------------------------------------------------------ data */
+
+.rr-il-data { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+@media (max-width: 960px) { .rr-il-data { grid-template-columns: 1fr; } }
+
+.rr-il-graph {
+    height: 620px; border-radius: 10px; overflow: hidden;
+    background: #0b1020; position: relative;
+}
+.rr-il-graph .rr-il-empty { color: #94a3b8; text-align: center; padding-top: 280px; }
+
+.rr-il-sidebar {
+    background: #fff; border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 10px; padding: 16px;
+}
+.rr-il-sidebar h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--rr-gray-500, #6B7280); }
+.rr-il-sidebar h3 + * { margin-bottom: 20px; }
+
+.rr-il-metrics { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rr-il-metrics th { text-align: left; font-weight: 400; color: var(--rr-gray-600, #4B5563); padding: 4px 0; }
+.rr-il-metrics td { text-align: right; font-weight: 600; color: var(--rr-gray-900, #111827); padding: 4px 0; }
+
+.rr-il-verdicts { list-style: none; margin: 10px 0 0; padding: 0; font-size: 12px; }
+.rr-il-verdict { padding: 6px 8px; border-radius: 6px; margin-bottom: 6px; line-height: 1.4; }
+.rr-il-verdict--ok   { background: var(--rr-success-light, #D1FAE5); color: var(--rr-success-text, #065F46); }
+.rr-il-verdict--warn { background: var(--rr-warning-light, #FEF3C7); color: var(--rr-warning-text, #92400E); }
+
+.rr-il-legend { list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--rr-gray-600, #4B5563); }
+.rr-il-legend li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.rr-il-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+
+/* ----------------------------------------------------------- instellingen */
+
+.rr-il-settings { max-width: 560px; }
+.rr-il-field { display: block; margin-bottom: 18px; }
+.rr-il-field-lbl { display: block; font-weight: 600; margin-bottom: 4px; }
+.rr-il-field-help { display: block; font-size: 12px; color: var(--rr-gray-500, #6B7280); margin-top: 4px; }
+.rr-il-settings input[type="number"] { width: 120px; }
+.rr-il-settings fieldset { border: 0; padding: 0; }
+.rr-il-settings fieldset label { line-height: 2; }

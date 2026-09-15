@@ -3,7 +3,7 @@
  * Plugin Name: RankRepair
  * Plugin URI: https://example.com/rankrepair
  * Description: Los veelvoorkomende SEO- en performance-problemen op met één klik. Dashboard met PageSpeed integratie en modulaire add-ons.
- * Version: 1.8.0
+ * Version: 1.9.0
  * Author: Danique
  * Author URI: https://example.com
  * License: GPL v2 or later
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RR_VERSION', '1.8.0');
+define('RR_VERSION', '1.9.0');
 define('RR_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('RR_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('RR_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -238,6 +238,10 @@ final class RankRepair {
         // Interne links (graaf-tabel voor de Internal Links add-on)
         $table_links = $wpdb->prefix . 'rr_internal_links';
 
+        // Linksuggesties (fase 2): worden beoordeeld, bewerkt en toegepast, dus
+        // horen ze in een tabel en niet in een transient die kan verlopen.
+        $table_sugg = $wpdb->prefix . 'rr_il_suggestions';
+
         $sql_meta = "CREATE TABLE $table_meta (
   id bigint(20) NOT NULL AUTO_INCREMENT,
   post_id bigint(20) DEFAULT NULL,
@@ -276,10 +280,36 @@ final class RankRepair {
   KEY source_id (source_id)
 ) $charset_collate;";
 
+
+        $sql_sugg = "CREATE TABLE $table_sugg (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  target_id bigint(20) unsigned NOT NULL,
+  source_id bigint(20) unsigned NOT NULL,
+  score decimal(8,6) NOT NULL DEFAULT 0,
+  mode varchar(12) NOT NULL DEFAULT 'wrap',
+  anchor varchar(255) NOT NULL DEFAULT '',
+  segment_ref varchar(64) NOT NULL DEFAULT '',
+  sentence_before text NULL,
+  sentence_after text NULL,
+  status varchar(12) NOT NULL DEFAULT 'pending',
+  reason varchar(255) NOT NULL DEFAULT '',
+  link_uid varchar(20) NOT NULL DEFAULT '',
+  content_before longtext NULL,
+  content_hash char(32) NOT NULL DEFAULT '',
+  created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  applied_at datetime NULL,
+  PRIMARY KEY  (id),
+  KEY target_id (target_id),
+  KEY source_id (source_id),
+  KEY status (status),
+  KEY link_uid (link_uid)
+) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql_pagespeed);
         dbDelta($sql_meta);
         dbDelta($sql_links);
+        dbDelta($sql_sugg);
 
         // Fallback: als dbDelta de tabellen niet heeft aangemaakt (bijv. door een parseerfout),
         // probeer dan een directe CREATE TABLE IF NOT EXISTS query.
@@ -339,6 +369,38 @@ final class RankRepair {
   KEY source_id (source_id)
 ) $charset_collate;");
         }
+
+        $this->create_suggestions_table_fallback($table_sugg, $charset_collate);
+    }
+
+    private function create_suggestions_table_fallback($table_sugg, $charset_collate) {
+        global $wpdb;
+        if ( $wpdb->get_var("SHOW TABLES LIKE '" . $wpdb->esc_like($table_sugg) . "'") === $table_sugg ) {
+            return;
+        }
+        $wpdb->query("CREATE TABLE IF NOT EXISTS $table_sugg (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  target_id bigint(20) unsigned NOT NULL,
+  source_id bigint(20) unsigned NOT NULL,
+  score decimal(8,6) NOT NULL DEFAULT 0,
+  mode varchar(12) NOT NULL DEFAULT 'wrap',
+  anchor varchar(255) NOT NULL DEFAULT '',
+  segment_ref varchar(64) NOT NULL DEFAULT '',
+  sentence_before text NULL,
+  sentence_after text NULL,
+  status varchar(12) NOT NULL DEFAULT 'pending',
+  reason varchar(255) NOT NULL DEFAULT '',
+  link_uid varchar(20) NOT NULL DEFAULT '',
+  content_before longtext NULL,
+  content_hash char(32) NOT NULL DEFAULT '',
+  created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  applied_at datetime NULL,
+  PRIMARY KEY (id),
+  KEY target_id (target_id),
+  KEY source_id (source_id),
+  KEY status (status),
+  KEY link_uid (link_uid)
+) $charset_collate;");
     }
 
     public function register_admin_menu() {
@@ -526,7 +588,13 @@ function rr_decrypt_key($stored) {
  * Algemene AI-tekstcompletion. Hergebruikt de provider-opties van de meta-manager
  * (rr_ai_provider / rr_ai_model / rr_gemini_api_key). Retourneert platte tekst of WP_Error.
  */
-function rr_ai_complete($prompt) {
+function rr_ai_complete($prompt, $args = []) {
+    $args = wp_parse_args($args, [
+        'max_tokens'  => 300,
+        'temperature' => 0.5,
+        'timeout'     => 30,
+    ]);
+
     $api_key = rr_decrypt_key(get_option('rr_gemini_api_key', ''));
     if (empty($api_key)) {
         return new WP_Error('no_key', __('Geen AI API key ingesteld.', 'rankrepair'));
@@ -546,10 +614,10 @@ function rr_ai_complete($prompt) {
             'body' => wp_json_encode([
                 'model'       => $model,
                 'messages'    => [['role' => 'user', 'content' => $prompt]],
-                'temperature' => 0.5,
-                'max_tokens'  => 300,
+                'temperature' => (float) $args['temperature'],
+                'max_tokens'  => (int) $args['max_tokens'],
             ]),
-            'timeout' => 30,
+            'timeout' => (int) $args['timeout'],
         ]);
         if (is_wp_error($response)) { return $response; }
         $code = wp_remote_retrieve_response_code($response);
@@ -565,9 +633,9 @@ function rr_ai_complete($prompt) {
             'headers' => ['Content-Type' => 'application/json'],
             'body'    => wp_json_encode([
                 'contents'         => [['parts' => [['text' => $prompt]]]],
-                'generationConfig' => ['temperature' => 0.5, 'maxOutputTokens' => 300],
+                'generationConfig' => ['temperature' => (float) $args['temperature'], 'maxOutputTokens' => (int) $args['max_tokens']],
             ]),
-            'timeout' => 30,
+            'timeout' => (int) $args['timeout'],
         ]);
         if (is_wp_error($response)) { return $response; }
         $code = wp_remote_retrieve_response_code($response);
