@@ -1,22 +1,318 @@
-.rr-il-wrap { max-width: 1100px; }
-.rr-il-toolbar { display: flex; align-items: center; gap: 16px; margin: 16px 0; }
+/* Interne Links — admin UI
+   Kleuren volgen de RankRepair-tokens uit admin/css/admin-style.css. */
+
+.rr-il-wrap { max-width: 1240px; }
+
+/* ------------------------------------------------------------------- tabs */
+
+.rr-il-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--rr-gray-200, #E5E7EB);
+    margin: 16px 0 20px;
+    flex-wrap: wrap;
+}
+.rr-il-tab {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--rr-gray-500, #6B7280);
+    cursor: pointer;
+}
+.rr-il-tab:hover { color: var(--rr-gray-900, #111827); }
+.rr-il-tab.is-active {
+    color: var(--rr-primary, #6366F1);
+    border-bottom-color: var(--rr-primary, #6366F1);
+}
+.rr-il-pill {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--rr-gray-200, #E5E7EB);
+    color: var(--rr-gray-700, #374151);
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+}
+
+.rr-il-panel { display: none; }
+.rr-il-panel.is-active { display: block; }
+
+/* --------------------------------------------------------------- toolbar */
+
+.rr-il-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 16px;
+    flex-wrap: wrap;
+}
+.rr-il-hint { color: var(--rr-gray-500, #6B7280); font-size: 12px; }
 .rr-il-progress { display: flex; align-items: center; gap: 8px; }
-.rr-il-progress-bar { width: 220px; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
-.rr-il-progress-bar span { display: block; height: 100%; width: 0; background: #6366f1; transition: width .2s; }
-.rr-il-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
-.rr-il-stat { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; text-align: center; }
-.rr-il-stat-val { display: block; font-size: 24px; font-weight: 700; color: #111827; }
-.rr-il-stat-lbl { display: block; font-size: 12px; color: #6b7280; margin-top: 4px; }
+.rr-il-progress-bar {
+    width: 220px; height: 8px;
+    background: var(--rr-gray-200, #E5E7EB);
+    border-radius: 4px; overflow: hidden;
+}
+.rr-il-progress-bar span {
+    display: block; height: 100%; width: 0;
+    background: var(--rr-primary, #6366F1);
+    transition: width .2s;
+}
+
+.rr-il-notice {
+    background: var(--rr-blue-light, #DBEAFE);
+    border: 1px solid #BFDBFE;
+    color: var(--rr-blue-text, #1E40AF);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* ----------------------------------------------------------------- stats */
+
+.rr-il-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+.rr-il-stat {
+    background: #fff;
+    border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+}
+.rr-il-stat-val { display: block; font-size: 24px; font-weight: 700; color: var(--rr-gray-900, #111827); }
+.rr-il-stat-lbl { display: block; font-size: 12px; color: var(--rr-gray-500, #6B7280); margin-top: 4px; }
+
 .rr-il-table { margin-top: 12px; background: #fff; }
-.rr-il-badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; color: #fff; }
-.rr-il-badge--orphan { background: #b32d2e; }
-.rr-il-badge--thin { background: #d97706; }
-#rr-il-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100000; }
-#rr-il-modal { position: fixed; top: 8%; left: 50%; transform: translateX(-50%); width: min(900px, 92vw); max-height: 80vh; overflow: auto; background: #fff; border-radius: 10px; z-index: 100001; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
-#rr-il-modal-close { position: absolute; top: 10px; right: 14px; border: 0; background: none; font-size: 24px; cursor: pointer; line-height: 1; }
-.rr-il-modal-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-.rr-il-modal-table th, .rr-il-modal-table td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 13px; }
-.rr-il-context { color: #374151; font-style: italic; }
-.rr-il-muted { color: #9ca3af; font-size: 11px; }
-.rr-il-note { background: #fef3c7; border: 1px solid #fde68a; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
-.rr-il-modal-loading { padding: 40px; text-align: center; color: #6b7280; }
+.rr-il-badge {
+    display: inline-block; font-size: 11px; padding: 1px 6px;
+    border-radius: 4px; color: #fff; vertical-align: 1px;
+}
+.rr-il-badge--orphan { background: var(--rr-danger, #EF4444); }
+.rr-il-badge--thin   { background: var(--rr-warning-dark, #D97706); }
+
+.rr-il-col-check { width: 28px; }
+.rr-il-col-thumb { width: 52px; }
+.rr-il-table td  { vertical-align: middle; }
+.rr-il-table .rr-il-thumb { display: inline-flex; width: 40px; height: 40px; flex-basis: 40px; font-size: 15px; }
+.rr-il-hiddenrow td {
+    background: var(--rr-gray-50, #F9FAFB);
+    color: var(--rr-gray-500, #6B7280); font-size: 12px; font-style: italic;
+}
+.rr-il-check-inline {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--rr-gray-600, #4B5563);
+}
+.rr-il-graph-note {
+    margin: 8px 2px 0; font-size: 12px; color: var(--rr-gray-500, #6B7280);
+}
+
+/* ------------------------------------------------------------ suggesties */
+
+/* De kaart leest van boven naar beneden als één zin:
+   deze pagina krijgt de link ← vanaf deze pagina ← in deze zin ← met dit woord. */
+
+.rr-il-scope {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--rr-primary-light, #EDE9FE);
+    border: 1px solid #DDD6FE;
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;
+}
+.rr-il-scope-label { color: var(--rr-primary-text, #5B21B6); }
+.rr-il-scope .button-link { margin-left: 4px; }
+.rr-il-scope .button-link + .button-link { margin-left: 12px; }
+
+.rr-il-card {
+    background: #fff;
+    border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-left: 3px solid var(--rr-gray-300, #D1D5DB);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+}
+.rr-il-card--approved { border-left-color: var(--rr-success, #10B981); }
+.rr-il-card--applied  { border-left-color: var(--rr-primary, #6366F1); background: var(--rr-gray-50, #F9FAFB); }
+.rr-il-card--rejected { border-left-color: var(--rr-gray-300, #D1D5DB); opacity: .6; }
+.rr-il-card--failed   { border-left-color: var(--rr-danger, #EF4444); }
+
+.rr-il-status-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.rr-il-status {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--rr-gray-500, #6B7280); font-weight: 600;
+}
+.rr-il-meta { font-size: 12px; color: var(--rr-gray-500, #6B7280); }
+
+/* De twee partijen: doel boven, bron eronder, met een pijl ertussen. */
+.rr-il-party { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; }
+.rr-il-party--doel { background: var(--rr-success-light, #D1FAE5); }
+.rr-il-party--bron { background: var(--rr-blue-light, #DBEAFE); }
+.rr-il-party-body  { display: flex; flex-direction: column; min-width: 0; }
+.rr-il-party-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--rr-gray-600, #4B5563); font-weight: 700; margin-bottom: 2px;
+}
+.rr-il-party-title { font-size: 15px; font-weight: 600; text-decoration: none; line-height: 1.3; }
+.rr-il-party-sub   { font-size: 12px; color: var(--rr-gray-600, #4B5563); margin-top: 2px; }
+
+.rr-il-arrow { text-align: center; font-size: 18px; color: var(--rr-gray-400, #9CA3AF); line-height: 1.6; }
+
+.rr-il-thumb {
+    position: relative;
+    width: 44px; height: 44px; flex: 0 0 44px;
+    border-radius: 6px; overflow: hidden;
+    background: var(--rr-gray-200, #E5E7EB);
+}
+.rr-il-thumb--leeg {
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: var(--rr-gray-500, #6B7280); font-size: 18px;
+}
+/* Ligt over de letter heen; verdwijnt via onerror als hij niet laadt. */
+.rr-il-thumb-img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; object-fit: cover; display: block;
+}
+
+.rr-il-zin { margin: 14px 0 10px; }
+.rr-il-preview {
+    margin: 4px 0 0; padding: 10px 12px;
+    background: var(--rr-gray-50, #F9FAFB);
+    border-left: 3px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 0 6px 6px 0; line-height: 1.65; color: var(--rr-gray-800, #1F2937);
+}
+.rr-il-preview mark {
+    background: #FDE68A; padding: 1px 3px; border-radius: 3px; font-weight: 600;
+}
+.rr-il-preview-before {
+    margin: 6px 0 0; padding: 0 12px; font-size: 12px; color: var(--rr-gray-500, #6B7280);
+}
+.rr-il-preview-before .rr-il-label { text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+
+.rr-il-anchor-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.rr-il-anchor {
+    display: inline-block; padding: 3px 10px; border-radius: 5px;
+    background: var(--rr-primary-light, #EDE9FE);
+    color: var(--rr-primary-text, #5B21B6);
+    font-weight: 600; cursor: text; min-width: 60px;
+}
+.rr-il-anchor:hover { outline: 1px dashed var(--rr-primary, #6366F1); }
+.rr-il-anchor-input { width: 280px; font-weight: 600; }
+
+.rr-il-card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.rr-il-rejected {
+    background: var(--rr-gray-50, #F9FAFB);
+    border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;
+}
+.rr-il-rejected summary { cursor: pointer; color: var(--rr-gray-600, #4B5563); }
+.rr-il-rejected ul { margin: 8px 0 0 16px; }
+.rr-il-rejected code {
+    background: var(--rr-gray-200, #E5E7EB); padding: 0 4px; border-radius: 3px; font-size: 11px;
+}
+
+.rr-il-empty { color: var(--rr-gray-500, #6B7280); padding: 24px 0; }
+.rr-il-muted { color: var(--rr-gray-400, #9CA3AF); font-size: 12px; }
+.rr-il-error { color: var(--rr-danger-text, #991B1B); }
+
+/* ------------------------------------------------------------- toepassen */
+
+.rr-il-log {
+    max-height: 420px; overflow-y: auto;
+    background: #0b1020; color: #cbd5e1;
+    border-radius: 8px; padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7;
+}
+.rr-il-log:empty { display: none; }
+.rr-il-log--ok    { color: #6ee7b7; }
+.rr-il-log--warn  { color: #fcd34d; }
+.rr-il-log--muted { color: #94a3b8; }
+
+/* ------------------------------------------------------------------ data */
+
+.rr-il-data { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+/* Zonder min-width: 0 groeit de eerste kolom mee met het canvas dat erin staat,
+   en duwt hij de zijbalk van het scherm af. */
+.rr-il-data > * { min-width: 0; }
+@media (max-width: 960px) { .rr-il-data { grid-template-columns: 1fr; } }
+
+.rr-il-graph {
+    height: 640px; border-radius: 12px; overflow: hidden;
+    position: relative;
+    /* Het canvas is doorzichtig; dit verloop is de achtergrond. Licht in het
+       midden, donker naar de randen — dat geeft de graaf diepte in plaats van
+       het gevoel dat hij op een zwart vlak geplakt is. */
+    background:
+        radial-gradient(ellipse 80% 70% at 50% 42%, #18214a 0%, #0c1130 45%, #070b1a 75%, #04060f 100%);
+    /* Een zachte rand en gloed eromheen: het paneel hoort bij de rest van de
+       beheeromgeving maar mag er wel uit springen. */
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .12), 0 16px 48px -14px rgba(99, 102, 241, .45);
+}
+/* Vignet over het canvas: trekt de blik naar het midden en verzacht de hoeken. */
+.rr-il-graph::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 75% 75% at 50% 45%, transparent 55%, rgba(4, 6, 15, .75) 100%);
+}
+.rr-il-graph canvas { position: relative; z-index: 1; }
+/* Tooltip van de graafbibliotheek in dezelfde taal als de rest. */
+.rr-il-tip {
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 2px 4px;
+}
+.rr-il-tip strong { font-weight: 600; }
+.rr-il-graph .rr-il-empty { color: #94a3b8; text-align: center; padding-top: 280px; }
+
+.rr-il-sidebar {
+    background: #fff; border: 1px solid var(--rr-gray-200, #E5E7EB);
+    border-radius: 10px; padding: 16px;
+}
+.rr-il-sidebar h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--rr-gray-500, #6B7280); }
+.rr-il-sidebar h3 + * { margin-bottom: 20px; }
+
+.rr-il-metrics { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rr-il-metrics th { text-align: left; font-weight: 400; color: var(--rr-gray-600, #4B5563); padding: 4px 0; }
+.rr-il-metrics td { text-align: right; font-weight: 600; color: var(--rr-gray-900, #111827); padding: 4px 0; }
+
+.rr-il-verdicts { list-style: none; margin: 10px 0 0; padding: 0; font-size: 12px; }
+.rr-il-verdict { padding: 6px 8px; border-radius: 6px; margin-bottom: 6px; line-height: 1.4; }
+.rr-il-verdict--ok   { background: var(--rr-success-light, #D1FAE5); color: var(--rr-success-text, #065F46); }
+.rr-il-verdict--warn { background: var(--rr-warning-light, #FEF3C7); color: var(--rr-warning-text, #92400E); }
+
+.rr-il-legend { list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--rr-gray-600, #4B5563); }
+.rr-il-legend li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.rr-il-dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto;
+    box-shadow: 0 0 8px currentColor;
+}
+.rr-il-legend li span[style] { box-shadow: 0 0 10px -1px; }
+.rr-il-legend-intro {
+    margin: -4px 0 10px; font-size: 12px; line-height: 1.5;
+    color: var(--rr-gray-600, #4B5563);
+}
+/* Een lijntje in plaats van een bolletje: dit gaat over een verbinding. */
+.rr-il-line {
+    width: 14px; height: 3px; border-radius: 2px;
+    display: inline-block; flex: 0 0 auto; box-shadow: 0 0 8px currentColor;
+}
+
+/* ----------------------------------------------------------- instellingen */
+
+.rr-il-settings { max-width: 560px; }
+.rr-il-field { display: block; margin-bottom: 18px; }
+.rr-il-field-lbl { display: block; font-weight: 600; margin-bottom: 4px; }
+.rr-il-field-help { display: block; font-size: 12px; color: var(--rr-gray-500, #6B7280); margin-top: 4px; }
+.rr-il-settings input[type="number"] { width: 120px; }
+.rr-il-settings fieldset { border: 0; padding: 0; }
+.rr-il-settings fieldset label { line-height: 2; }

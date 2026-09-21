@@ -3,7 +3,7 @@
  * Plugin Name: RankRepair
  * Plugin URI: https://example.com/rankrepair
  * Description: Los veelvoorkomende SEO- en performance-problemen op met één klik. Dashboard met PageSpeed integratie en modulaire add-ons.
- * Version: 1.8.1
+ * Version: 1.9.0
  * Author: Danique
  * Author URI: https://example.com
  * License: GPL v2 or later
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RR_VERSION', '1.8.1');
+define('RR_VERSION', '1.9.0');
 define('RR_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('RR_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('RR_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -41,7 +41,6 @@ final class RankRepair {
 
     private function __construct() {
         $this->load_dependencies();
-        $this->register_addons();
         $this->init_hooks();
         $this->maybe_create_tables();
     }
@@ -71,8 +70,15 @@ final class RankRepair {
     /**
      * Register add-ons
      * Modulaire structuur: voeg hier nieuwe add-ons toe
+     *
+     * Draait op 'init' en niet eerder. De add-ons zetten in hun init() hun naam
+     * en omschrijving met __(), en WordPress 6.7 waarschuwt terecht wanneer een
+     * textdomain vóór 'init' wordt geladen. Met WP_DEBUG_DISPLAY aan kwam die
+     * notice vóór de headers en brak daardoor de redirect na het inloggen.
+     * Alle hooks die de add-ons zelf zetten (wp_ajax_*, wp_head, upload-filters,
+     * mediakolommen) vuren later, dus dit verandert verder niets.
      */
-    private function register_addons() {
+    public function register_addons() {
         $addon_files = [
             'meta-manager'      => RR_PLUGIN_DIR . 'addons/meta-manager/class-addon-meta-manager.php',
             'structured-data'   => RR_PLUGIN_DIR . 'addons/structured-data/class-addon-structured-data.php',
@@ -124,7 +130,10 @@ final class RankRepair {
 
         add_action('admin_menu', [$this, 'register_admin_menu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
-        add_action('init', [$this, 'load_textdomain']);
+
+        // Volgorde telt: eerst de vertalingen, dan pas de add-ons die ze gebruiken.
+        add_action('init', [$this, 'load_textdomain'], 1);
+        add_action('init', [$this, 'register_addons'], 5);
 
         // Paginatie suffix voor meta titels
         add_filter('wpseo_title',              [$this, 'apply_pagination_suffix'], 20);
@@ -238,6 +247,10 @@ final class RankRepair {
         // Interne links (graaf-tabel voor de Internal Links add-on)
         $table_links = $wpdb->prefix . 'rr_internal_links';
 
+        // Linksuggesties (fase 2): worden beoordeeld, bewerkt en toegepast, dus
+        // horen ze in een tabel en niet in een transient die kan verlopen.
+        $table_sugg = $wpdb->prefix . 'rr_il_suggestions';
+
         $sql_meta = "CREATE TABLE $table_meta (
   id bigint(20) NOT NULL AUTO_INCREMENT,
   post_id bigint(20) DEFAULT NULL,
@@ -276,10 +289,36 @@ final class RankRepair {
   KEY source_id (source_id)
 ) $charset_collate;";
 
+
+        $sql_sugg = "CREATE TABLE $table_sugg (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  target_id bigint(20) unsigned NOT NULL,
+  source_id bigint(20) unsigned NOT NULL,
+  score decimal(8,6) NOT NULL DEFAULT 0,
+  mode varchar(12) NOT NULL DEFAULT 'wrap',
+  anchor varchar(255) NOT NULL DEFAULT '',
+  segment_ref varchar(64) NOT NULL DEFAULT '',
+  sentence_before text NULL,
+  sentence_after text NULL,
+  status varchar(12) NOT NULL DEFAULT 'pending',
+  reason varchar(255) NOT NULL DEFAULT '',
+  link_uid varchar(20) NOT NULL DEFAULT '',
+  content_before longtext NULL,
+  content_hash char(32) NOT NULL DEFAULT '',
+  created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  applied_at datetime NULL,
+  PRIMARY KEY  (id),
+  KEY target_id (target_id),
+  KEY source_id (source_id),
+  KEY status (status),
+  KEY link_uid (link_uid)
+) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql_pagespeed);
         dbDelta($sql_meta);
         dbDelta($sql_links);
+        dbDelta($sql_sugg);
 
         // Fallback: als dbDelta de tabellen niet heeft aangemaakt (bijv. door een parseerfout),
         // probeer dan een directe CREATE TABLE IF NOT EXISTS query.
@@ -339,6 +378,38 @@ final class RankRepair {
   KEY source_id (source_id)
 ) $charset_collate;");
         }
+
+        $this->create_suggestions_table_fallback($table_sugg, $charset_collate);
+    }
+
+    private function create_suggestions_table_fallback($table_sugg, $charset_collate) {
+        global $wpdb;
+        if ( $wpdb->get_var("SHOW TABLES LIKE '" . $wpdb->esc_like($table_sugg) . "'") === $table_sugg ) {
+            return;
+        }
+        $wpdb->query("CREATE TABLE IF NOT EXISTS $table_sugg (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  target_id bigint(20) unsigned NOT NULL,
+  source_id bigint(20) unsigned NOT NULL,
+  score decimal(8,6) NOT NULL DEFAULT 0,
+  mode varchar(12) NOT NULL DEFAULT 'wrap',
+  anchor varchar(255) NOT NULL DEFAULT '',
+  segment_ref varchar(64) NOT NULL DEFAULT '',
+  sentence_before text NULL,
+  sentence_after text NULL,
+  status varchar(12) NOT NULL DEFAULT 'pending',
+  reason varchar(255) NOT NULL DEFAULT '',
+  link_uid varchar(20) NOT NULL DEFAULT '',
+  content_before longtext NULL,
+  content_hash char(32) NOT NULL DEFAULT '',
+  created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  applied_at datetime NULL,
+  PRIMARY KEY (id),
+  KEY target_id (target_id),
+  KEY source_id (source_id),
+  KEY status (status),
+  KEY link_uid (link_uid)
+) $charset_collate;");
     }
 
     public function register_admin_menu() {
@@ -526,7 +597,20 @@ function rr_decrypt_key($stored) {
  * Algemene AI-tekstcompletion. Hergebruikt de provider-opties van de meta-manager
  * (rr_ai_provider / rr_ai_model / rr_gemini_api_key). Retourneert platte tekst of WP_Error.
  */
-function rr_ai_complete($prompt) {
+function rr_ai_complete($prompt, $args = []) {
+    $args = wp_parse_args($args, [
+        // Ruim bemeten, want een redeneermodel besteedt een deel van zijn budget
+        // aan denkwerk vóór het antwoord. Een cap kost niets zolang hij niet wordt
+        // gehaald; te krap zetten levert een leeg antwoord op.
+        'max_tokens'  => 1000,
+        'temperature' => 0.5,
+        'timeout'     => 60,
+        // Alleen OpenRouter. 'low' houdt redeneermodellen bruikbaar én goedkoop:
+        // op een korte opdracht scheelde dat een factor 39 in kosten. Helemaal
+        // uitzetten weigeren sommige endpoints ("Reasoning is mandatory").
+        'reasoning'   => 'low',
+    ]);
+
     $api_key = rr_decrypt_key(get_option('rr_gemini_api_key', ''));
     if (empty($api_key)) {
         return new WP_Error('no_key', __('Geen AI API key ingesteld.', 'rankrepair'));
@@ -535,7 +619,10 @@ function rr_ai_complete($prompt) {
     $model    = trim(get_option('rr_ai_model', ''));
 
     if ($provider === 'openrouter') {
-        if (empty($model)) { $model = 'google/gemini-2.0-flash-001'; }
+        // Gecontroleerd op 15 sep 2026 tegen de modellenlijst van OpenRouter.
+        // De oude standaard google/gemini-2.0-flash-001 bestaat niet meer en gaf
+        // "No endpoints found"; wie het modelveld leeg liet kreeg dus een fout.
+        if (empty($model)) { $model = 'google/gemini-3.8-flash'; }
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', [
             'headers' => [
                 'Content-Type'  => 'application/json',
@@ -543,13 +630,14 @@ function rr_ai_complete($prompt) {
                 'HTTP-Referer'  => home_url(),
                 'X-Title'       => get_bloginfo('name'),
             ],
-            'body' => wp_json_encode([
+            'body' => wp_json_encode(array_filter([
                 'model'       => $model,
                 'messages'    => [['role' => 'user', 'content' => $prompt]],
-                'temperature' => 0.5,
-                'max_tokens'  => 300,
-            ]),
-            'timeout' => 30,
+                'temperature' => (float) $args['temperature'],
+                'max_tokens'  => (int) $args['max_tokens'],
+                'reasoning'   => $args['reasoning'] ? ['effort' => (string) $args['reasoning']] : null,
+            ], function ($v) { return $v !== null; })),
+            'timeout' => (int) $args['timeout'],
         ]);
         if (is_wp_error($response)) { return $response; }
         $code = wp_remote_retrieve_response_code($response);
@@ -565,9 +653,9 @@ function rr_ai_complete($prompt) {
             'headers' => ['Content-Type' => 'application/json'],
             'body'    => wp_json_encode([
                 'contents'         => [['parts' => [['text' => $prompt]]]],
-                'generationConfig' => ['temperature' => 0.5, 'maxOutputTokens' => 300],
+                'generationConfig' => ['temperature' => (float) $args['temperature'], 'maxOutputTokens' => (int) $args['max_tokens']],
             ]),
-            'timeout' => 30,
+            'timeout' => (int) $args['timeout'],
         ]);
         if (is_wp_error($response)) { return $response; }
         $code = wp_remote_retrieve_response_code($response);
@@ -579,7 +667,7 @@ function rr_ai_complete($prompt) {
     }
 
     if (empty($text)) {
-        return new WP_Error('ai_empty', __('AI gaf geen resultaat terug.', 'rankrepair'));
+        return new WP_Error('ai_empty', __('AI gaf geen resultaat terug. Bij een redeneermodel betekent dat meestal dat het tokenbudget op ging aan denkwerk — verhoog max_tokens of kies een lichter model.', 'rankrepair'));
     }
     return trim($text);
 }

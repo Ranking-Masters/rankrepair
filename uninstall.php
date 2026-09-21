@@ -54,6 +54,16 @@ $options = [
     'rr_level4_url',
     'rr_malware_scan_result',
     'rr_malware_scan_progress',
+    // Interne Links
+    'rr_il_max_links_per_source',
+    'rr_il_max_links_per_target',
+    'rr_il_density_per_100w',
+    'rr_il_max_same_anchor',
+    'rr_il_suggestions_per_target',
+    'rr_il_mode_wrap',
+    'rr_il_mode_rewrite',
+    'rr_il_mode_clause',
+    'rr_il_use_ai',
 ];
 
 foreach ($options as $option) {
@@ -68,11 +78,15 @@ $tables = [
     $wpdb->prefix . 'rr_pagespeed_results',
     $wpdb->prefix . 'rr_meta_data',
     $wpdb->prefix . 'rr_internal_links',
+    $wpdb->prefix . 'rr_il_suggestions',
 ];
 
 foreach ($tables as $table) {
     $wpdb->query("DROP TABLE IF EXISTS $table");
 }
+
+// Tekstindex van de Interne Links add-on (postmeta, één rij per post).
+$wpdb->delete($wpdb->postmeta, ['meta_key' => '_rr_il_index'], ['%s']);
 
 // Clear transients
 $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_rr_%'");
