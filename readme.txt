@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.7.2
+Stable tag: 1.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,10 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.8.1 =
+* Fix: malware-scan meldde ten onrechte "gewijzigd core-bestand" voor wp-includes/version.php op niet-Engelstalige sites — dit bestand verschilt legitiem per taal-build (locale-checksum vs. de daadwerkelijk geïnstalleerde en_US-kernbestanden). Wordt nu ook tegen de en_US-checksum gecontroleerd voordat het als wijziging gerapporteerd wordt.
+* Fix: malware-scan meldde ten onrechte "verdacht PHP-bestand" voor de WP-Optimize ServerSignature-zelftest (uploads/wpo/server-signature/on|off/test.php). Toegevoegd aan de allowlist voor bekende-legitieme uploads-paden.
 
 = 1.6.1 =
 * Image Optimizer fix: na WebP-conversie worden hardcoded afbeeldings-URL's in post-content automatisch omgeschreven naar de nieuwe .webp-URL. Voorheen bleef het originele (verwijderde) .png/.jpg in content staan → 404 op afbeeldingen.
