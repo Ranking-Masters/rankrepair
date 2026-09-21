@@ -224,12 +224,29 @@ class IL_Profile {
         return ($owner && $owner !== (int) $target_id) ? $owner : 0;
     }
 
-    /** Aantal woorden in de lopende tekst van een post. */
+    /**
+     * Aantal woorden in de lopende tekst van een post.
+     *
+     * Uit de index, niet uit de pagina zelf. Parsen is het duurste dat deze
+     * add-on doet: het overzichtsscherm vraagt dit voor elke rij op, en over
+     * 625 pagina's liep het geheugen daarmee 84 MB op — genoeg om op een host
+     * met een krappe limiet een wit scherm op te leveren. De index heeft het
+     * getal al, want de scan berekent het toch.
+     */
     public static function word_count($post_id) {
         $post_id = (int) $post_id;
         if (isset(self::$wordcount_cache[$post_id])) {
             return self::$wordcount_cache[$post_id];
         }
+
+        $entry = IL_Index::get($post_id);
+        if ($entry !== null && isset($entry['r'])) {
+            self::$wordcount_cache[$post_id] = (int) $entry['r'];
+            return self::$wordcount_cache[$post_id];
+        }
+
+        // Geen (of een oude) index-rij: dan tellen we hem alsnog. Gebeurt
+        // eenmalig, tot de eerstvolgende scan de index heeft bijgewerkt.
         $words = 0;
         foreach (IL_Content::segments($post_id) as $seg) {
             $words += IL_Text::word_count($seg['text']);

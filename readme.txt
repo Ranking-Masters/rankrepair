@@ -75,6 +75,10 @@ Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen
 * Suggesties staan nu in een tabel in plaats van een transient, en zijn te beoordelen, te bewerken en te exporteren.
 * Prestaties: de scan bouwt een tekstindex per post, zodat relevantie bepalen niet meer elke pagina opnieuw inleest.
 
+= 1.8.1 =
+* Fix: malware-scan meldde ten onrechte "gewijzigd core-bestand" voor wp-includes/version.php op niet-Engelstalige sites — dit bestand verschilt legitiem per taal-build (locale-checksum vs. de daadwerkelijk geïnstalleerde en_US-kernbestanden). Wordt nu ook tegen de en_US-checksum gecontroleerd voordat het als wijziging gerapporteerd wordt.
+* Fix: malware-scan meldde ten onrechte "verdacht PHP-bestand" voor de WP-Optimize ServerSignature-zelftest (uploads/wpo/server-signature/on|off/test.php). Toegevoegd aan de allowlist voor bekende-legitieme uploads-paden.
+
 = 1.8.0 =
 * Interne Links fase 1: detectie van pagina's met 0 of 1 inkomende interne link, plus linksuggesties met ankertekst.
 

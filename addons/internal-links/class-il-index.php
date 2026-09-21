@@ -48,6 +48,10 @@ class IL_Index {
         $entry = [
             't' => $tf,
             'w' => count($tokens),
+            // Het echte woordaantal, los van de tokentelling hierboven (die telt
+            // alleen inhoudswoorden van 3+ letters). Hiermee hoeft niemand een
+            // pagina opnieuw te parsen om te weten hoe lang hij is.
+            'r' => IL_Text::word_count($text),
             'k' => self::focus_keyword($post_id),
             'p' => $post->post_type,
             's' => $post->post_status,

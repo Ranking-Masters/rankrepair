@@ -34,6 +34,14 @@ class IL_Content {
     private static $segment_cache = [];
 
     /**
+     * Bovengrens op die cache. Zonder grens houdt een lus over duizend pagina's
+     * de geparste inhoud van allemaal vast; op een site met lange artikelen is
+     * dat honderden megabytes. De planner werkt aan een handvol pagina's
+     * tegelijk, dus dit raakt in de praktijk niets.
+     */
+    const SEGMENT_CACHE_MAX = 40;
+
+    /**
      * Geregistreerde adapters, hoogste prioriteit eerst.
      * Uitbreiden kan via de filter — bijvoorbeeld voor WPBakery, Divi of een ACF-veld.
      */
@@ -125,6 +133,9 @@ class IL_Content {
             $out[] = $seg;
         }
 
+        if (count(self::$segment_cache) >= self::SEGMENT_CACHE_MAX) {
+            array_shift(self::$segment_cache);
+        }
         self::$segment_cache[$post->ID] = $out;
         return $out;
     }
