@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.0
+Stable tag: 1.9.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,10 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.1 =
+* Fix: malware-scan meldde ten onrechte "cloaking" bij elke user-agent/referer-conditionele RewriteRule in .htaccess, ook zonder daadwerkelijke substitutie — LiteSpeed Cache's eigen mobile/webp-vary-blokken triggerden dit. Vereist nu een echte substitutie/redirect voordat het als cloaking gemeld wordt.
+* Fix: malware-scan meldde ten onrechte "verdacht PHP-bestand" voor bekende databestanden van Sucuri Security (uploads/sucuri/) en MC4WP: Mailchimp for WP (uploads/mailchimp-for-wp/debug-log.php). Toegevoegd aan de allowlist.
 
 = 1.9.0 =
 * Interne Links fase 2: goedgekeurde suggesties worden nu echt in de content geplaatst.
