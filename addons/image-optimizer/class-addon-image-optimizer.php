@@ -659,6 +659,14 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
         $original_mime  = get_post_mime_type($attachment_id);
         $is_gif_or_webp = in_array($original_mime, ['image/gif', 'image/webp'], true);
 
+        // Oude metadata vastleggen VÓÓR compressie: na een format-conversie
+        // (bv. PNG -> WebP) heeft elke subgrootte (thumbnail/medium/large/etc.)
+        // een nieuwe bestandsnaam. Zonder de oude grootte-per-grootte te kennen
+        // kunnen we straks alleen de full-size URL herschrijven — terwijl de
+        // editor bij het invoegen van een afbeelding standaard een subgrootte
+        // in de content plakt, geen full-size URL.
+        $old_metadata = $is_gif_or_webp ? null : wp_get_attachment_metadata($attachment_id);
+
         $convert_to_jpg  = isset($_POST['convert_to_jpg'])  ? (bool) absint($_POST['convert_to_jpg'])  : null;
         $convert_to_webp = isset($_POST['convert_to_webp']) ? (bool) absint($_POST['convert_to_webp']) : null;
 
@@ -681,6 +689,9 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             if ('compressed' === $result['status']) {
                 $metadata = wp_generate_attachment_metadata($attachment_id, get_attached_file($attachment_id));
                 wp_update_attachment_metadata($attachment_id, $metadata);
+                if (is_array($old_metadata)) {
+                    $this->rewrite_subsize_image_urls($old_metadata, $metadata);
+                }
             }
         }
 
@@ -1042,14 +1053,14 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
         // post-content blijven anders naar de oude (.png/.jpg) URL wijzen → 404.
         if ($old_url && $old_url !== $new_url) {
             $this->rewrite_content_image_urls($old_url, $new_url);
+            $this->rewrite_postmeta_image_urls($old_url, $new_url);
         }
     }
 
     /**
      * Werk hardcoded verwijzingen naar de oude afbeeldings-URL bij naar de nieuwe URL
      * in post-content. post_content is geen geserialiseerde data, dus een directe
-     * REPLACE is veilig. (Postmeta wordt overgeslagen: dat is vaak geserialiseerd en
-     * afbeeldingen daar worden doorgaans via attachment-ID gerenderd, niet via URL.)
+     * REPLACE is veilig.
      */
     private function rewrite_content_image_urls($old_url, $new_url) {
         global $wpdb;
@@ -1058,6 +1069,94 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             $old_url, $new_url, '%' . $wpdb->esc_like($old_url) . '%'
         ));
         return (int) $affected;
+    }
+
+    /**
+     * Werk verwijzingen naar de oude afbeeldings-URL bij in postmeta — dit is waar
+     * paginabouwers hun layout opslaan (bv. Elementor's `_elementor_data`, een JSON-
+     * string, of ACF-velden). Een blinde REPLACE op de ruwe meta_value is alleen
+     * veilig voor platte strings/JSON; PHP-serialized data (arrays/objects, zoals
+     * ACF-repeaters/galerijen) heeft lengte-voorvoegsels per string, dus die wordt
+     * eerst ge-unserialize'd, recursief doorlopen en pas daarna weer geserialized —
+     * anders raakt de data corrupt. Onparseerbare serialized waardes worden overgeslagen
+     * (niet aankomen is veiliger dan risico op corruptie).
+     */
+    private function rewrite_postmeta_image_urls($old_url, $new_url) {
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE meta_value LIKE %s",
+            '%' . $wpdb->esc_like($old_url) . '%'
+        ));
+        $affected = 0;
+        foreach ($rows as $row) {
+            $value = $row->meta_value;
+            if (is_serialized($value)) {
+                $data = @unserialize(trim($value));
+                if ($data === false && trim($value) !== 'b:0;') {
+                    continue; // niet te parsen -> niet aankomen
+                }
+                $new_value = serialize($this->replace_url_recursive($data, $old_url, $new_url));
+            } else {
+                $new_value = str_replace($old_url, $new_url, $value);
+            }
+            if ($new_value !== $value) {
+                $wpdb->update($wpdb->postmeta, ['meta_value' => $new_value], ['meta_id' => (int) $row->meta_id]);
+                $affected++;
+            }
+        }
+        return $affected;
+    }
+
+    /** Recursief door (geneste) arrays/objecten lopen en een URL binnen strings vervangen. */
+    private function replace_url_recursive($data, $old_url, $new_url) {
+        if (is_string($data)) {
+            return str_replace($old_url, $new_url, $data);
+        }
+        if (is_array($data)) {
+            foreach ($data as $k => $v) {
+                $data[$k] = $this->replace_url_recursive($v, $old_url, $new_url);
+            }
+            return $data;
+        }
+        if (is_object($data)) {
+            foreach (get_object_vars($data) as $k => $v) {
+                $data->$k = $this->replace_url_recursive($v, $old_url, $new_url);
+            }
+            return $data;
+        }
+        return $data;
+    }
+
+    /**
+     * Werkt na een geslaagde compressie/conversie ALLE afgeleide-grootte-URL's bij
+     * (thumbnail/medium/large/etc.), niet alleen de full-size die update_attachment_path()
+     * al afhandelt. De editor plakt bij het invoegen van een afbeelding standaard een
+     * specifieke subgrootte in content/postmeta, geen full-size URL — zonder deze stap
+     * blijven de meeste al-geplaatste afbeeldingen na conversie naar een verwijderd
+     * bestand wijzen.
+     */
+    private function rewrite_subsize_image_urls(array $old_metadata, $new_metadata) {
+        if (!is_array($new_metadata) || empty($old_metadata['sizes']) || empty($new_metadata['sizes'])
+            || empty($old_metadata['file']) || empty($new_metadata['file'])) {
+            return;
+        }
+        $upload_dir = wp_upload_dir();
+        $base_url   = trailingslashit($upload_dir['baseurl']);
+        $old_dir    = trailingslashit(dirname($old_metadata['file']));
+        $new_dir    = trailingslashit(dirname($new_metadata['file']));
+
+        foreach ($old_metadata['sizes'] as $size_key => $old_size) {
+            if (empty($old_size['file']) || empty($new_metadata['sizes'][$size_key]['file'])) {
+                continue; // grootte bestond niet (meer) aan beide kanten -> niks om te matchen
+            }
+            $old_url = $base_url . $old_dir . $old_size['file'];
+            $new_url = $base_url . $new_dir . $new_metadata['sizes'][$size_key]['file'];
+            if ($old_url === $new_url) {
+                continue;
+            }
+            $this->rewrite_content_image_urls($old_url, $new_url);
+            $this->rewrite_postmeta_image_urls($old_url, $new_url);
+        }
     }
 }
 
