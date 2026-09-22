@@ -508,11 +508,12 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                             <th class="rr-img-th"><?php _e('Afmetingen', 'rankrepair'); ?></th>
                             <th class="rr-img-th"><?php _e('Status', 'rankrepair'); ?></th>
                             <th class="rr-img-th"></th>
+                            <th class="rr-img-th rr-img-th--excl"><?php _e('Uitsluiten', 'rankrepair'); ?></th>
                         </tr>
                     </thead>
                     <tbody id="rr-img-tbody">
                         <tr>
-                            <td colspan="9" class="rr-img-empty-state" id="rr-img-empty">
+                            <td colspan="10" class="rr-img-empty-state" id="rr-img-empty">
                                 <div class="rr-img-empty-spinner">
                                     <span class="rr-spin rr-spin--lg"></span>
                                     <span><?php _e('Afbeeldingen laden...', 'rankrepair'); ?></span>

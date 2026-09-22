@@ -89,7 +89,7 @@
         autoScan: function () {
             var $tbody = $('#rr-img-tbody');
             $tbody.html(
-                '<tr><td colspan="9" class="rr-img-empty-state">' +
+                '<tr><td colspan="10" class="rr-img-empty-state">' +
                 '<div class="rr-img-empty-spinner"><span class="rr-spin rr-spin--lg"></span>' +
                 '<span>Afbeeldingen laden...</span></div></td></tr>'
             );
@@ -99,7 +99,7 @@
                 nonce:  rrAdmin.nonce
             }, function (response) {
                 if (!response.success) {
-                    $tbody.html('<tr><td colspan="9" class="rr-img-empty-state" style="color:var(--rr-danger)">' +
+                    $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">' +
                         RRImg.esc(response.data || 'Scanfout') + '</td></tr>');
                     return;
                 }
@@ -110,7 +110,7 @@
                 RRImg.updateFooter();
                 $('#rr-img-all-count').text(RRImg.allImages.filter(function (i) { return i.needs_compression; }).length);
             }).fail(function () {
-                $tbody.html('<tr><td colspan="9" class="rr-img-empty-state" style="color:var(--rr-danger)">Verbindingsfout. Herlaad de pagina.</td></tr>');
+                $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">Verbindingsfout. Herlaad de pagina.</td></tr>');
             });
         },
 
@@ -139,7 +139,7 @@
             $tbody.empty();
 
             if (!images || images.length === 0) {
-                $tbody.html('<tr><td colspan="9" class="rr-img-empty-state">' +
+                $tbody.html('<tr><td colspan="10" class="rr-img-empty-state">' +
                     '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--rr-gray-300)" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>' +
                     '<div style="margin-top:8px;color:var(--rr-gray-400)">Alle afbeeldingen zijn al geoptimaliseerd!</div>' +
                     '</td></tr>');
@@ -196,10 +196,15 @@
                     __('Annuleren') + '</button>';
             } else {
                 actionHtml = '<button class="rr-img-action-btn rr-img-action-btn--indigo rr-img-compress-btn" data-id="' + img.id + '">' +
-                    __('Optimaliseer') + '</button>' +
-                    '<button class="rr-img-action-btn rr-img-action-btn--ghost rr-img-exclude-btn" data-id="' + img.id + '" title="' +
-                    __('Nooit optimaliseren') + '">🚫</button>';
+                    __('Optimaliseer') + '</button>';
             }
+
+            // Uitsluiten — eigen kolom, los van de hoofdactie. Niet tijdens verwerking.
+            var exclHtml = isProcessing ? '' :
+                '<button class="rr-img-excl-col-btn rr-img-exclude-btn" data-id="' + img.id + '" title="' +
+                __('Nooit optimaliseren') + '">' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="6" y1="18" x2="18" y2="6"/></svg>' +
+                '</button>';
 
             var checked = RRImg.selectedIds.indexOf(img.id) !== -1 ? ' checked' : '';
 
@@ -230,6 +235,7 @@
                 '<td class="rr-img-td rr-img-td--dim">' + (dimStr ? RRImg.esc(dimStr) : '—') + '</td>' +
                 '<td class="rr-img-td rr-img-td--status">' + statusHtml + '</td>' +
                 '<td class="rr-img-td rr-img-td--action" id="rr-img-act-' + img.id + '">' + actionHtml + '</td>' +
+                '<td class="rr-img-td rr-img-td--excl">' + exclHtml + '</td>' +
                 '</tr>';
         },
 
