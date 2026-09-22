@@ -26,7 +26,9 @@
             this.bindTableEvents();
             this.bindFooterBar();
             this.bindDisplayScanner();
+            this.bindExclusions();
             this.autoScan();
+            this.refreshExcludedCount();
         },
 
         // =====================================================================
@@ -194,7 +196,9 @@
                     __('Annuleren') + '</button>';
             } else {
                 actionHtml = '<button class="rr-img-action-btn rr-img-action-btn--indigo rr-img-compress-btn" data-id="' + img.id + '">' +
-                    __('Optimaliseer') + '</button>';
+                    __('Optimaliseer') + '</button>' +
+                    '<button class="rr-img-action-btn rr-img-action-btn--ghost rr-img-exclude-btn" data-id="' + img.id + '" title="' +
+                    __('Nooit optimaliseren') + '">🚫</button>';
             }
 
             var checked = RRImg.selectedIds.indexOf(img.id) !== -1 ? ' checked' : '';
@@ -299,6 +303,13 @@
             // Restore
             $(document).on('click', '.rr-img-restore-btn', function () {
                 RRImg.restoreSingle(parseInt($(this).data('id'), 10));
+            });
+
+            // Uitsluiten vanuit de hoofdtabel (bv. handtekening-afbeeldingen)
+            $(document).on('click', '.rr-img-exclude-btn', function () {
+                var id = parseInt($(this).data('id'), 10);
+                if (!confirm('Deze afbeelding nooit meer optimaliseren? Je kunt dit later terugdraaien via "Uitgesloten".')) return;
+                RRImg.excludeImage(id);
             });
 
             // Export btn (both locations)
@@ -648,6 +659,160 @@
 
             $('#rr-img-ds-table').show();
             $('#rr-img-ds-empty').hide();
+        },
+
+        // =====================================================================
+        // Uitsluitingen (bv. handtekening-afbeeldingen die nooit mee mogen doen)
+        // =====================================================================
+
+        bindExclusions: function () {
+            $(document).on('click', '#rr-img-excluded-btn', function () {
+                RRImg.openExclusionsModal();
+            });
+
+            $(document).on('click', '#rr-img-excl-close', function () {
+                $('#rr-img-excl-overlay').hide();
+            });
+
+            // Klik op de donkere achtergrond sluit de modal, klik in de modal zelf niet
+            $(document).on('click', '#rr-img-excl-overlay', function (e) {
+                if (e.target.id === 'rr-img-excl-overlay') $('#rr-img-excl-overlay').hide();
+            });
+
+            $(document).on('click', '.rr-img-excl-restore-btn', function () {
+                var id = parseInt($(this).data('id'), 10);
+                RRImg.unexcludeImage(id);
+            });
+
+            $(document).on('click', '#rr-img-excl-add-btn', function () {
+                RRImg.openMediaPickerForExclusion();
+            });
+        },
+
+        refreshExcludedCount: function () {
+            $.post(rrAdmin.ajaxUrl, {
+                action: 'rr_img_excluded_list',
+                nonce:  rrAdmin.nonce
+            }, function (response) {
+                if (response.success) {
+                    $('#rr-img-excluded-count').text(response.data.total);
+                }
+            });
+        },
+
+        excludeImage: function (id) {
+            $.post(rrAdmin.ajaxUrl, {
+                action:        'rr_img_exclude',
+                nonce:         rrAdmin.nonce,
+                attachment_id: id
+            }, function (response) {
+                if (response.success) {
+                    // Uit de huidige scanlijst halen — mag hier nooit meer in verschijnen
+                    RRImg.allImages = RRImg.allImages.filter(function (i) { return i.id !== id; });
+                    $('#rr-img-row-' + id).remove();
+                    RRImg.refreshExcludedCount();
+                } else {
+                    alert(response.data || 'Fout bij uitsluiten.');
+                }
+            }).fail(function () {
+                alert('Verbindingsfout.');
+            });
+        },
+
+        unexcludeImage: function (id) {
+            $.post(rrAdmin.ajaxUrl, {
+                action:        'rr_img_unexclude',
+                nonce:         rrAdmin.nonce,
+                attachment_id: id
+            }, function (response) {
+                if (response.success) {
+                    RRImg.openExclusionsModal(); // lijst verversen
+                    RRImg.autoScan();            // kan weer terugkomen in de hoofdlijst
+                } else {
+                    alert(response.data || 'Fout bij terugzetten.');
+                }
+            }).fail(function () {
+                alert('Verbindingsfout.');
+            });
+        },
+
+        openExclusionsModal: function () {
+            var $overlay = $('#rr-img-excl-overlay');
+            var $list    = $('#rr-img-excl-list');
+            $list.html('<div class="rr-img-excl-empty">Laden...</div>');
+            $overlay.css('display', 'flex');
+
+            $.post(rrAdmin.ajaxUrl, {
+                action: 'rr_img_excluded_list',
+                nonce:  rrAdmin.nonce
+            }, function (response) {
+                if (!response.success) {
+                    $list.html('<div class="rr-img-excl-empty">Fout bij laden.</div>');
+                    return;
+                }
+                $('#rr-img-excluded-count').text(response.data.total);
+                RRImg.renderExclusionsList(response.data.images);
+            }).fail(function () {
+                $list.html('<div class="rr-img-excl-empty">Verbindingsfout.</div>');
+            });
+        },
+
+        renderExclusionsList: function (images) {
+            var $list = $('#rr-img-excl-list');
+            if (!images || images.length === 0) {
+                $list.html('<div class="rr-img-excl-empty">Nog geen afbeeldingen uitgesloten.</div>');
+                return;
+            }
+            $list.empty();
+            images.forEach(function (img) {
+                var thumb = img.thumb_url
+                    ? '<img src="' + img.thumb_url + '" class="rr-img-excl-thumb" alt="">'
+                    : '<div class="rr-img-excl-thumb rr-img-excl-thumb--empty"></div>';
+                $list.append(
+                    '<div class="rr-img-excl-row">' +
+                        thumb +
+                        '<div class="rr-img-excl-name">' + RRImg.esc(img.file_name || img.title) + '</div>' +
+                        '<button class="rr-img-btn rr-img-btn--outline rr-img-btn--sm rr-img-excl-restore-btn" data-id="' + img.id + '">' +
+                            'Terugzetten' +
+                        '</button>' +
+                    '</div>'
+                );
+            });
+        },
+
+        openMediaPickerForExclusion: function () {
+            if (typeof wp === 'undefined' || !wp.media) {
+                alert('Media-bibliotheek kon niet geladen worden.');
+                return;
+            }
+            var frame = wp.media({
+                title: 'Afbeelding(en) uitsluiten van optimalisatie',
+                library: { type: 'image' },
+                multiple: true,
+                button: { text: 'Uitsluiten' }
+            });
+            frame.on('select', function () {
+                var selection = frame.state().get('selection');
+                var ids = selection.map(function (att) { return att.get('id'); });
+                if (!ids.length) return;
+                var remaining = ids.length;
+                ids.forEach(function (id) {
+                    $.post(rrAdmin.ajaxUrl, {
+                        action:        'rr_img_exclude',
+                        nonce:         rrAdmin.nonce,
+                        attachment_id: id
+                    }, function () {
+                        RRImg.allImages = RRImg.allImages.filter(function (i) { return i.id !== id; });
+                        $('#rr-img-row-' + id).remove();
+                    }).always(function () {
+                        remaining--;
+                        if (remaining === 0) {
+                            RRImg.openExclusionsModal();
+                        }
+                    });
+                });
+            });
+            frame.open();
         },
 
         // =====================================================================
