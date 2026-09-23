@@ -869,6 +869,15 @@
                 var selection = frame.state().get('selection');
                 var ids = selection.map(function (att) { return att.get('id'); });
                 if (!ids.length) return;
+
+                var alreadyExcludedIds = RRImg.exclImages.map(function (i) { return i.id; });
+                var alreadyCount = ids.filter(function (id) { return alreadyExcludedIds.indexOf(id) !== -1; }).length;
+                if (alreadyCount === 1) {
+                    RRImg.showToast('Deze afbeelding is al uitgesloten.');
+                } else if (alreadyCount > 1) {
+                    RRImg.showToast(alreadyCount + ' van de geselecteerde afbeeldingen waren al uitgesloten.');
+                }
+
                 RRImg.excludeSelection(ids, function () {
                     RRImg.openExclusionsModal();
                 });
@@ -879,6 +888,18 @@
         // =====================================================================
         // Helpers
         // =====================================================================
+
+        /** Korte, vanzelf verdwijnende melding onderin het scherm (bv. "al uitgesloten"). */
+        showToast: function (message) {
+            $('.rr-img-toast').remove();
+            var $toast = $('<div class="rr-img-toast"></div>').text(message);
+            $('body').append($toast);
+            requestAnimationFrame(function () { $toast.addClass('rr-img-toast--in'); });
+            setTimeout(function () {
+                $toast.removeClass('rr-img-toast--in');
+                setTimeout(function () { $toast.remove(); }, 300);
+            }, 2600);
+        },
 
         formatBytes: function (bytes) {
             if (!bytes || bytes <= 0) return '0 B';
