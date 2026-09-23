@@ -339,11 +339,18 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = '_jic_compressed' AND meta_value = '1'"
         );
 
+        // Uitgesloten afbeeldingen (bv. handtekeningen) tellen niet mee als "te
+        // optimaliseren" — anders klopt de knop "Optimaliseer alles (N)" niet meer
+        // met wat er daadwerkelijk in de scanlijst/verwerking terechtkomt.
         $too_large = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
              LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_jic_compressed'
              WHERE p.post_type = 'attachment' AND p.post_mime_type LIKE 'image/%'
-             AND p.post_status = 'inherit' AND (pm.meta_value IS NULL OR pm.meta_value = '0')"
+             AND p.post_status = 'inherit' AND (pm.meta_value IS NULL OR pm.meta_value = '0')
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->postmeta} pme
+                 WHERE pme.post_id = p.ID AND pme.meta_key = '_jic_excluded' AND pme.meta_value = '1'
+             )"
         ));
 
         $orig_sizes  = array_map('intval', (array) $wpdb->get_col("SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_jic_original_size'"));

@@ -110,7 +110,7 @@
                 RRImg.renderTable(RRImg.allImages);
                 RRImg.updateStats(response.data);
                 RRImg.updateFooter();
-                $('#rr-img-all-count').text(RRImg.allImages.filter(function (i) { return i.needs_compression; }).length);
+                RRImg.updateAllCount();
             }).fail(function () {
                 $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">Verbindingsfout. Herlaad de pagina.</td></tr>');
             });
@@ -130,6 +130,14 @@
                 $('#rr-img-footer-savings').text(RRImg.formatBytes(estSaved));
                 $('#rr-img-footer-pct').text(estPct);
             }
+        },
+
+        /** "Optimaliseer alles (N)" + de "Afbeeldingen te groot"-stat-kaart, in sync
+         *  houden met RRImg.allImages (bv. meteen na uit-/insluiten, zonder page-reload). */
+        updateAllCount: function () {
+            var count = RRImg.allImages.filter(function (i) { return i.needs_compression; }).length;
+            $('#rr-img-all-count').text(count);
+            $('#rr-img-stat-toolarge').text(count);
         },
 
         // =====================================================================
@@ -757,6 +765,7 @@
                         RRImg.updateFooter();
                     }
                     RRImg.refreshExcludedCount();
+                    RRImg.updateAllCount();
                     if (typeof callback === 'function') callback();
                 } else {
                     alert(response.data || 'Fout bij uitsluiten.');
