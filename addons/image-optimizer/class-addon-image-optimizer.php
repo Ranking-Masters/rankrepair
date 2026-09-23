@@ -776,23 +776,6 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             $est_size    = (int) ($file_size * $est_ratio);
             $est_savings = $file_size > 0 ? round((1 - $est_size / $file_size) * 100) : 0;
 
-            // In a format-conversion mode, every non-target-format image is a
-            // candidate — even those already under max_file_size — because
-            // PNG → WebP usually still saves significantly on disk.
-            $needs_compression = ($file_size > $this->options['max_file_size'])
-                || ($target_mime && $mime_type !== $target_mime);
-
-            // De lijst heet "Te optimaliseren afbeeldingen" en de knop "Optimaliseer
-            // alles" — dus alles wat hier staat moet ook echt verwerkt worden zodra
-            // je die knop gebruikt. Een afbeelding die simpelweg nog geen
-            // _jic_compressed-vlag heeft, maar al onder de drempel zit, hoort hier
-            // niet tussen te staan (dat gaf een verwarrend verschil tussen het
-            // aantal in de knop en het aantal rijen in de tabel).
-            if (!$needs_compression) {
-                $total_bytes -= $file_size;
-                continue;
-            }
-
             $images[] = [
                 'id'                => $attachment_id,
                 'title'             => get_the_title($attachment_id),
@@ -801,7 +784,11 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                 'file_name'         => basename($file_path),
                 'thumb_url'         => $thumb_url ?: '',
                 'mime_type'         => $mime_type,
-                'needs_compression' => $needs_compression,
+                // In a format-conversion mode, every non-target-format image is
+                // a candidate — even those already under max_file_size — because
+                // PNG → WebP usually still saves significantly on disk.
+                'needs_compression' => ($file_size > $this->options['max_file_size'])
+                    || ($target_mime && $mime_type !== $target_mime),
                 'width'             => $width,
                 'height'            => $height,
                 'new_width'         => $new_w,
