@@ -219,7 +219,16 @@
     padding: 0 20px;
     gap: 24px;
     overflow-x: auto;
+    /* Altijd een zichtbare scrollbar tonen (i.p.v. de systeemstandaard, die op
+       macOS/mobiel standaard verborgen is tot je scrollt) — anders lijkt de
+       balk simpelweg afgesneden zonder enige aanwijzing dat er meer staat. */
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
 }
+.rr-img-filter-bar::-webkit-scrollbar { height: 6px; }
+.rr-img-filter-bar::-webkit-scrollbar-track { background: transparent; }
+.rr-img-filter-bar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+.rr-img-filter-bar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
 .rr-img-filter-bar__title {
     font-size: 13px;
@@ -487,7 +496,13 @@
 .rr-img-table-scroll {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
 }
+.rr-img-table-scroll::-webkit-scrollbar { height: 6px; }
+.rr-img-table-scroll::-webkit-scrollbar-track { background: transparent; }
+.rr-img-table-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+.rr-img-table-scroll::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
 .rr-img-table {
     width: 100%;
