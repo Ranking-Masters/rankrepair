@@ -494,34 +494,36 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                     </div>
                 </div>
 
-                <table class="rr-img-table">
-                    <thead>
-                        <tr class="rr-img-table__hrow">
-                            <th class="rr-img-th rr-img-th--check">
-                                <input type="checkbox" id="rr-img-check-all" class="rr-img-checkbox">
-                            </th>
-                            <th class="rr-img-th"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Huidig', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Na optimalisatie', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Besparing', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Afmetingen', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Status', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"></th>
-                            <th class="rr-img-th rr-img-th--excl"><?php _e('Uitsluiten', 'rankrepair'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rr-img-tbody">
-                        <tr>
-                            <td colspan="10" class="rr-img-empty-state" id="rr-img-empty">
-                                <div class="rr-img-empty-spinner">
-                                    <span class="rr-spin rr-spin--lg"></span>
-                                    <span><?php _e('Afbeeldingen laden...', 'rankrepair'); ?></span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="rr-img-table-scroll">
+                    <table class="rr-img-table">
+                        <thead>
+                            <tr class="rr-img-table__hrow">
+                                <th class="rr-img-th rr-img-th--check">
+                                    <input type="checkbox" id="rr-img-check-all" class="rr-img-checkbox">
+                                </th>
+                                <th class="rr-img-th"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Huidig', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Na optimalisatie', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Besparing', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Afmetingen', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Status', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"></th>
+                                <th class="rr-img-th rr-img-th--excl"><?php _e('Uitsluiten', 'rankrepair'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rr-img-tbody">
+                            <tr>
+                                <td colspan="10" class="rr-img-empty-state" id="rr-img-empty">
+                                    <div class="rr-img-empty-spinner">
+                                        <span class="rr-spin rr-spin--lg"></span>
+                                        <span><?php _e('Afbeeldingen laden...', 'rankrepair'); ?></span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- ============================================ -->
@@ -556,20 +558,22 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                     <span id="rr-img-ds-savings">—</span>
                 </div>
 
-                <table class="rr-img-table" id="rr-img-ds-table" style="display:none;">
-                    <thead>
-                        <tr>
-                            <th style="width: 60px;"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
-                            <th><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
-                            <th><?php _e('Werkelijke afm.', 'rankrepair'); ?></th>
-                            <th><?php _e('Weergegeven', 'rankrepair'); ?></th>
-                            <th><?php _e('Verhouding', 'rankrepair'); ?></th>
-                            <th><?php _e('Voorgesteld', 'rankrepair'); ?></th>
-                            <th style="width: 140px;"><?php _e('Actie', 'rankrepair'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rr-img-ds-tbody"></tbody>
-                </table>
+                <div class="rr-img-table-scroll">
+                    <table class="rr-img-table" id="rr-img-ds-table" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
+                                <th><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
+                                <th><?php _e('Werkelijke afm.', 'rankrepair'); ?></th>
+                                <th><?php _e('Weergegeven', 'rankrepair'); ?></th>
+                                <th><?php _e('Verhouding', 'rankrepair'); ?></th>
+                                <th><?php _e('Voorgesteld', 'rankrepair'); ?></th>
+                                <th style="width: 140px;"><?php _e('Actie', 'rankrepair'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rr-img-ds-tbody"></tbody>
+                    </table>
+                </div>
 
                 <div id="rr-img-ds-empty" style="padding: 20px; text-align:center; color:#9ca3af;">
                     <?php _e('Klik op "Scan pagina(s)" om te beginnen.', 'rankrepair'); ?>

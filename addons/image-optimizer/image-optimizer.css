@@ -480,8 +480,18 @@
    Table
    ============================================================ */
 
+/* Laat de tabel zelf scrollen op smalle schermen i.p.v. rechterkolommen
+   (Status/Optimaliseer/Uitsluiten) onbereikbaar achter overflow:hidden te
+   laten verdwijnen — de kaart eromheen (.rr-img-table-card) knipt overflow
+   juist bewust af voor de afgeronde hoeken. */
+.rr-img-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .rr-img-table {
     width: 100%;
+    min-width: 900px;
     border-collapse: collapse;
     font-family: var(--rr-font) !important;
 }
