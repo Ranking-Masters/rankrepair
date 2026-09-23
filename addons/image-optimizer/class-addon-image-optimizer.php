@@ -77,9 +77,11 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
         add_action('wp_ajax_rr_img_ds_resize',  [$this, 'ajax_ds_resize']);
 
         // Uitsluitingen (bv. handtekening-afbeeldingen die nooit geoptimaliseerd mogen worden)
-        add_action('wp_ajax_rr_img_exclude',       [$this, 'ajax_exclude']);
-        add_action('wp_ajax_rr_img_unexclude',     [$this, 'ajax_unexclude']);
-        add_action('wp_ajax_rr_img_excluded_list', [$this, 'ajax_excluded_list']);
+        add_action('wp_ajax_rr_img_exclude',        [$this, 'ajax_exclude']);
+        add_action('wp_ajax_rr_img_unexclude',      [$this, 'ajax_unexclude']);
+        add_action('wp_ajax_rr_img_excluded_list',  [$this, 'ajax_excluded_list']);
+        add_action('wp_ajax_rr_img_exclude_bulk',   [$this, 'ajax_exclude_bulk']);
+        add_action('wp_ajax_rr_img_unexclude_bulk', [$this, 'ajax_unexclude_bulk']);
     }
 
     // =========================================================================
@@ -211,6 +213,38 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             ];
         }
         wp_send_json_success(['images' => $images, 'total' => count($images)]);
+    }
+
+    /** Sluit in één keer een selectie afbeeldingen uit (bv. vanuit de hoofdtabel). */
+    public function ajax_exclude_bulk() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+        $ids = isset($_POST['attachment_ids']) ? (array) wp_unslash($_POST['attachment_ids']) : [];
+        $ids = array_unique(array_filter(array_map('absint', $ids)));
+        $count = 0;
+        foreach ($ids as $id) {
+            if ('attachment' === get_post_type($id)) {
+                update_post_meta($id, '_jic_excluded', 1);
+                $count++;
+            }
+        }
+        wp_send_json_success(['count' => $count]);
+    }
+
+    /** Haalt in één keer de uitsluiting van een selectie afbeeldingen weg. */
+    public function ajax_unexclude_bulk() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+        $ids = isset($_POST['attachment_ids']) ? (array) wp_unslash($_POST['attachment_ids']) : [];
+        $ids = array_unique(array_filter(array_map('absint', $ids)));
+        foreach ($ids as $id) {
+            delete_post_meta($id, '_jic_excluded');
+        }
+        wp_send_json_success(['count' => count($ids)]);
     }
 
     // =========================================================================
@@ -454,6 +488,13 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                         <button id="rr-img-excl-add-btn" class="rr-img-btn rr-img-btn--green rr-img-btn--sm" type="button">
                             + <?php _e('Afbeelding toevoegen', 'rankrepair'); ?>
                         </button>
+                        <label class="rr-img-excl-selectall">
+                            <input type="checkbox" id="rr-img-excl-check-all" class="rr-img-checkbox">
+                            <?php _e('Alles selecteren', 'rankrepair'); ?>
+                        </label>
+                        <button id="rr-img-excl-restore-sel-btn" class="rr-img-btn rr-img-btn--outline rr-img-btn--sm" disabled>
+                            <?php _e('Terugzetten selectie', 'rankrepair'); ?> (<span id="rr-img-excl-sel-count">0</span>)
+                        </button>
                     </div>
                     <div id="rr-img-excl-list" class="rr-img-excl-modal__list">
                         <div class="rr-img-excl-empty"><?php _e('Laden...', 'rankrepair'); ?></div>
@@ -595,6 +636,9 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                 <span class="rr-img-footer-sel" id="rr-img-footer-sel" style="display:none"></span>
                 <button class="rr-img-btn rr-img-btn--outline" id="rr-img-export-footer-btn">
                     <?php _e('Rapport exporteren', 'rankrepair'); ?>
+                </button>
+                <button class="rr-img-btn rr-img-btn--outline" id="rr-img-exclude-sel-btn" disabled>
+                    🚫 <?php _e('Uitsluiten selectie', 'rankrepair'); ?> (<span id="rr-img-exclude-sel-count">0</span>)
                 </button>
                 <button class="rr-img-btn rr-img-btn--green" id="rr-img-optimize-sel-btn" disabled>
                     ⚡ <?php _e('Optimaliseer selectie', 'rankrepair'); ?> (<span id="rr-img-sel-count">0</span>)

@@ -7,15 +7,17 @@
     'use strict';
 
     var RRImg = {
-        allImages:    [],
-        selectedIds:  [],
-        currentIndex: 0,
-        isRunning:    false,
-        isStopped:    false,
-        totalSaved:   0,
-        successCount: 0,
-        errorCount:   0,
-        skippedCount: 0,
+        allImages:      [],
+        selectedIds:    [],
+        exclSelectedIds:[],
+        exclImages:     [],
+        currentIndex:   0,
+        isRunning:      false,
+        isStopped:      false,
+        totalSaved:     0,
+        successCount:   0,
+        errorCount:     0,
+        skippedCount:   0,
 
         // =====================================================================
         // Boot
@@ -349,16 +351,25 @@
                 });
                 RRImg.startBulk(toProcess);
             });
+
+            $(document).on('click', '#rr-img-exclude-sel-btn', function () {
+                if (!RRImg.selectedIds.length) return;
+                if (!confirm('Deze ' + RRImg.selectedIds.length + ' afbeelding(en) nooit meer optimaliseren? Je kunt dit later terugdraaien via "Uitgesloten".')) return;
+                RRImg.excludeSelection(RRImg.selectedIds.slice());
+            });
         },
 
         updateFooter: function () {
             var count = RRImg.selectedIds.length;
-            var $selBtn = $('#rr-img-optimize-sel-btn');
-            var $selLbl = $('#rr-img-footer-sel');
-            var $selCnt = $('#rr-img-sel-count');
+            var $selBtn  = $('#rr-img-optimize-sel-btn');
+            var $exclBtn = $('#rr-img-exclude-sel-btn');
+            var $selLbl  = $('#rr-img-footer-sel');
+            var $selCnt  = $('#rr-img-sel-count');
 
             $selCnt.text(count);
+            $('#rr-img-exclude-sel-count').text(count);
             $selBtn.prop('disabled', count === 0);
+            $exclBtn.prop('disabled', count === 0);
 
             if (count > 0) {
                 $selLbl.text(count + ' geselecteerd').show();
@@ -687,11 +698,34 @@
 
             $(document).on('click', '.rr-img-excl-restore-btn', function () {
                 var id = parseInt($(this).data('id'), 10);
-                RRImg.unexcludeImage(id);
+                RRImg.unexcludeSelection([id]);
             });
 
             $(document).on('click', '#rr-img-excl-add-btn', function () {
                 RRImg.openMediaPickerForExclusion();
+            });
+
+            // Selectie binnen het uitsluitingen-overzicht (voor bulk terugzetten)
+            $(document).on('change', '#rr-img-excl-check-all', function () {
+                var checked = this.checked;
+                $('.rr-img-excl-row-check').prop('checked', checked);
+                RRImg.exclSelectedIds = checked ? RRImg.exclImages.map(function (i) { return i.id; }) : [];
+                RRImg.updateExclSelectionUi();
+            });
+
+            $(document).on('change', '.rr-img-excl-row-check', function () {
+                var id = parseInt($(this).data('id'), 10);
+                if (this.checked) {
+                    if (RRImg.exclSelectedIds.indexOf(id) === -1) RRImg.exclSelectedIds.push(id);
+                } else {
+                    RRImg.exclSelectedIds = RRImg.exclSelectedIds.filter(function (x) { return x !== id; });
+                }
+                RRImg.updateExclSelectionUi();
+            });
+
+            $(document).on('click', '#rr-img-excl-restore-sel-btn', function () {
+                if (!RRImg.exclSelectedIds.length) return;
+                RRImg.unexcludeSelection(RRImg.exclSelectedIds.slice());
             });
         },
 
@@ -706,17 +740,24 @@
             });
         },
 
-        excludeImage: function (id) {
+        /** Sluit één of meerdere afbeeldingen tegelijk uit (rij-knop of "Uitsluiten selectie"). */
+        excludeSelection: function (ids, callback) {
             $.post(rrAdmin.ajaxUrl, {
-                action:        'rr_img_exclude',
-                nonce:         rrAdmin.nonce,
-                attachment_id: id
+                action:         'rr_img_exclude_bulk',
+                nonce:          rrAdmin.nonce,
+                attachment_ids: ids
             }, function (response) {
                 if (response.success) {
-                    // Uit de huidige scanlijst halen — mag hier nooit meer in verschijnen
-                    RRImg.allImages = RRImg.allImages.filter(function (i) { return i.id !== id; });
-                    $('#rr-img-row-' + id).remove();
+                    ids.forEach(function (id) {
+                        RRImg.allImages = RRImg.allImages.filter(function (i) { return i.id !== id; });
+                        $('#rr-img-row-' + id).remove();
+                    });
+                    if (RRImg.selectedIds.length) {
+                        RRImg.selectedIds = RRImg.selectedIds.filter(function (id) { return ids.indexOf(id) === -1; });
+                        RRImg.updateFooter();
+                    }
                     RRImg.refreshExcludedCount();
+                    if (typeof callback === 'function') callback();
                 } else {
                     alert(response.data || 'Fout bij uitsluiten.');
                 }
@@ -725,11 +766,16 @@
             });
         },
 
-        unexcludeImage: function (id) {
+        excludeImage: function (id) {
+            RRImg.excludeSelection([id]);
+        },
+
+        /** Haalt de uitsluiting van één of meerdere afbeeldingen tegelijk weg. */
+        unexcludeSelection: function (ids) {
             $.post(rrAdmin.ajaxUrl, {
-                action:        'rr_img_unexclude',
-                nonce:         rrAdmin.nonce,
-                attachment_id: id
+                action:         'rr_img_unexclude_bulk',
+                nonce:          rrAdmin.nonce,
+                attachment_ids: ids
             }, function (response) {
                 if (response.success) {
                     RRImg.openExclusionsModal(); // lijst verversen
@@ -745,6 +791,8 @@
         openExclusionsModal: function () {
             var $overlay = $('#rr-img-excl-overlay');
             var $list    = $('#rr-img-excl-list');
+            RRImg.exclSelectedIds = [];
+            $('#rr-img-excl-check-all').prop('checked', false);
             $list.html('<div class="rr-img-excl-empty">Laden...</div>');
             $overlay.css('display', 'flex');
 
@@ -757,7 +805,9 @@
                     return;
                 }
                 $('#rr-img-excluded-count').text(response.data.total);
-                RRImg.renderExclusionsList(response.data.images);
+                RRImg.exclImages = response.data.images || [];
+                RRImg.renderExclusionsList(RRImg.exclImages);
+                RRImg.updateExclSelectionUi();
             }).fail(function () {
                 $list.html('<div class="rr-img-excl-empty">Verbindingsfout.</div>');
             });
@@ -776,6 +826,7 @@
                     : '<div class="rr-img-excl-thumb rr-img-excl-thumb--empty"></div>';
                 $list.append(
                     '<div class="rr-img-excl-row">' +
+                        '<input type="checkbox" class="rr-img-checkbox rr-img-excl-row-check" data-id="' + img.id + '">' +
                         thumb +
                         '<div class="rr-img-excl-name">' + RRImg.esc(img.file_name || img.title) + '</div>' +
                         '<button class="rr-img-btn rr-img-btn--outline rr-img-btn--sm rr-img-excl-restore-btn" data-id="' + img.id + '">' +
@@ -784,6 +835,14 @@
                     '</div>'
                 );
             });
+        },
+
+        updateExclSelectionUi: function () {
+            var count = RRImg.exclSelectedIds.length;
+            $('#rr-img-excl-sel-count').text(count);
+            $('#rr-img-excl-restore-sel-btn').prop('disabled', count === 0);
+            $('#rr-img-excl-check-all').prop('checked',
+                count > 0 && count === RRImg.exclImages.length);
         },
 
         openMediaPickerForExclusion: function () {
@@ -801,21 +860,8 @@
                 var selection = frame.state().get('selection');
                 var ids = selection.map(function (att) { return att.get('id'); });
                 if (!ids.length) return;
-                var remaining = ids.length;
-                ids.forEach(function (id) {
-                    $.post(rrAdmin.ajaxUrl, {
-                        action:        'rr_img_exclude',
-                        nonce:         rrAdmin.nonce,
-                        attachment_id: id
-                    }, function () {
-                        RRImg.allImages = RRImg.allImages.filter(function (i) { return i.id !== id; });
-                        $('#rr-img-row-' + id).remove();
-                    }).always(function () {
-                        remaining--;
-                        if (remaining === 0) {
-                            RRImg.openExclusionsModal();
-                        }
-                    });
+                RRImg.excludeSelection(ids, function () {
+                    RRImg.openExclusionsModal();
                 });
             });
             frame.open();
