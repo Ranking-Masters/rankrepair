@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.2
+Stable tag: 1.9.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,11 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.3 =
+* Nieuw: Image Optimizer — afbeeldingen uitsluiten van optimalisatie (bv. teamfoto's/handtekeningen die nooit gecomprimeerd/geconverteerd mogen worden). Uitsluiten per rij of in bulk vanuit de hoofdtabel, een overzicht met terugzet-mogelijkheid (los of in bulk), en handmatig toevoegen via de media-bibliotheek.
+* Fix: Image Optimizer — de instellingenbalk en de tabel waren op smalle schermen niet horizontaal scrollbaar, waardoor rechterkolommen (Status, Optimaliseer, Uitsluiten) onbereikbaar konden zijn.
+* Fix: Image Optimizer — "Optimaliseer alles (N)" en de statkaart "Nog te optimaliseren" konden een ander aantal tonen dan de daadwerkelijke lijst; beide zijn nu altijd consistent met wat er verwerkt wordt.
 
 = 1.9.2 =
 * Fix: malware-scan meldde ten onrechte "verdacht PHP-bestand" voor macOS zip-metadata (__MACOSX/._*) die na een migratie via een op een Mac gemaakte/uitgepakte back-up in uploads terecht was gekomen. Deze AppleDouble-bestanden bevatten geen uitvoerbare code en worden nu genegeerd.
