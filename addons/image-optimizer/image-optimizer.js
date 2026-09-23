@@ -234,8 +234,8 @@
                 '</td>' +
                 '<td class="rr-img-td rr-img-td--dim">' + (dimStr ? RRImg.esc(dimStr) : '—') + '</td>' +
                 '<td class="rr-img-td rr-img-td--status">' + statusHtml + '</td>' +
-                '<td class="rr-img-td rr-img-td--action" id="rr-img-act-' + img.id + '">' + actionHtml + '</td>' +
                 '<td class="rr-img-td rr-img-td--excl">' + exclHtml + '</td>' +
+                '<td class="rr-img-td rr-img-td--action" id="rr-img-act-' + img.id + '">' + actionHtml + '</td>' +
                 '</tr>';
         },
 
