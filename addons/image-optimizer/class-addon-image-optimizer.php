@@ -403,9 +403,9 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                     <div class="rr-img-stat-sub rr-img-stat-sub--green" id="rr-img-stat-total-sub">—</div>
                 </div>
                 <div class="rr-img-stat-card">
-                    <div class="rr-img-stat-label"><?php _e('Afbeeldingen te groot', 'rankrepair'); ?></div>
+                    <div class="rr-img-stat-label"><?php _e('Nog te optimaliseren', 'rankrepair'); ?></div>
                     <div class="rr-img-stat-number rr-img-stat-number--red" id="rr-img-stat-toolarge"><?php echo esc_html($too_large); ?></div>
-                    <div class="rr-img-stat-sub"><?php printf(__('boven %s', 'rankrepair'), size_format($this->options['max_file_size'])); ?></div>
+                    <div class="rr-img-stat-sub"><?php _e('nog niet geoptimaliseerd', 'rankrepair'); ?></div>
                 </div>
                 <div class="rr-img-stat-card">
                     <div class="rr-img-stat-label"><?php _e('Al geoptimaliseerd', 'rankrepair'); ?></div>
@@ -784,11 +784,15 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                 'file_name'         => basename($file_path),
                 'thumb_url'         => $thumb_url ?: '',
                 'mime_type'         => $mime_type,
-                // In a format-conversion mode, every non-target-format image is
-                // a candidate — even those already under max_file_size — because
-                // PNG → WebP usually still saves significantly on disk.
-                'needs_compression' => ($file_size > $this->options['max_file_size'])
-                    || ($target_mime && $mime_type !== $target_mime),
+                // Elke afbeelding die de query hierboven al oplevert is per definitie
+                // nog niet gemarkeerd als gecomprimeerd (of, in conversiemodus, nog
+                // niet in het doelformaat) — dat is de enige eligibiliteitseis. De
+                // bestandsgrootte t.o.v. max_file_size bepaalt niet meer of een
+                // afbeelding in de lijst/teller meetelt, alleen nog (in
+                // compress_image()) of er daadwerkelijk gecomprimeerd wordt of dat
+                // 'ie als 'skipped' gemarkeerd wordt — zo blijven lijst, teller en
+                // "Optimaliseer alles" altijd consistent.
+                'needs_compression' => true,
                 'width'             => $width,
                 'height'            => $height,
                 'new_width'         => $new_w,
