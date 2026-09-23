@@ -18,7 +18,6 @@
         successCount:   0,
         errorCount:     0,
         skippedCount:   0,
-        _scanRequestId: 0,
 
         // =====================================================================
         // Boot
@@ -97,18 +96,10 @@
                 '<span>Afbeeldingen laden...</span></div></td></tr>'
             );
 
-            // Als er meerdere scans (bijna) tegelijk starten (bv. dubbele
-            // event-binding of snel achter elkaar instellingen wijzigen), mag
-            // alleen de respons van de LAATST gestarte scan nog iets bijwerken —
-            // anders kan een trage, oudere respons een nieuwere overschrijven en
-            // zo een teller ineens laten "terugspringen" (bv. naar 0).
-            var requestId = ++RRImg._scanRequestId;
-
             $.post(rrAdmin.ajaxUrl, {
                 action: 'rr_img_scan',
                 nonce:  rrAdmin.nonce
             }, function (response) {
-                if (requestId !== RRImg._scanRequestId) return; // verouderde respons, negeren
                 if (!response.success) {
                     $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">' +
                         RRImg.esc(response.data || 'Scanfout') + '</td></tr>');
@@ -121,7 +112,6 @@
                 RRImg.updateFooter();
                 RRImg.updateAllCount();
             }).fail(function () {
-                if (requestId !== RRImg._scanRequestId) return;
                 $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">Verbindingsfout. Herlaad de pagina.</td></tr>');
             });
         },
@@ -909,16 +899,9 @@
     function __(text) { return text; }
 
     $(document).ready(function () {
-        if (!$('.rr-img-wrap').length) return;
-        // Sommige cache-/optimalisatieplugins (bv. het combineren van JS-bestanden)
-        // kunnen dit script per ongeluk twee keer op dezelfde pagina laten
-        // uitvoeren. Elke uitvoering krijgt dan zijn eigen, onafhankelijke RRImg-
-        // object dat allebei op dezelfde $(document) gaat klikken/scannen —
-        // waardoor tellers heen-en-weer springen tussen twee losse resultaten.
-        // Deze vlag zorgt dat alleen de EERSTE uitvoering daadwerkelijk initialiseert.
-        if (window.__rrImgOptimizerBooted) return;
-        window.__rrImgOptimizerBooted = true;
-        RRImg.init();
+        if ($('.rr-img-wrap').length) {
+            RRImg.init();
+        }
     });
 
 })(jQuery);
