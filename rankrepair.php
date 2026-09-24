@@ -3,7 +3,7 @@
  * Plugin Name: RankRepair
  * Plugin URI: https://example.com/rankrepair
  * Description: Los veelvoorkomende SEO- en performance-problemen op met één klik. Dashboard met PageSpeed integratie en modulaire add-ons.
- * Version: 1.9.0
+ * Version: 1.9.1
  * Author: Danique
  * Author URI: https://example.com
  * License: GPL v2 or later
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('RR_VERSION', '1.9.0');
+define('RR_VERSION', '1.9.1');
 define('RR_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('RR_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('RR_PLUGIN_BASENAME', plugin_basename(__FILE__));

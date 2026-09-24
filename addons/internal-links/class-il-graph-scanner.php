@@ -21,13 +21,32 @@ class IL_Graph_Scanner {
     }
 
     public static function post_types() {
-        $types = apply_filters('rr_internal_links_post_types', ['post', 'page']);
+        // Standaard alleen blogs (post): utility-pagina's (bedankt-, formulier-,
+        // bevestigingspagina's) horen niet in interne-link-suggesties. Wie ook
+        // pagina's/CPT's wil meenemen zet dat aan via de filter.
+        $types = apply_filters('rr_internal_links_post_types', ['post']);
         $types = array_values(array_filter(array_map('sanitize_key', (array) $types)));
         return empty($types) ? ['post'] : $types;
     }
 
+    /**
+     * Meta_query die op noindex gezette content uitsluit (Yoast). Noindex-pagina's
+     * zijn niet bedoeld om te ranken, dus interne links van/naar zulke pagina's zijn
+     * zinloos. Filterbaar uit te schakelen.
+     */
+    public static function noindex_exclusion_meta_query() {
+        if (!apply_filters('rr_internal_links_exclude_noindex', true)) {
+            return [];
+        }
+        return [
+            'relation' => 'OR',
+            ['key' => '_yoast_wpseo_meta-robots-noindex', 'compare' => 'NOT EXISTS'],
+            ['key' => '_yoast_wpseo_meta-robots-noindex', 'value' => '1', 'compare' => '!='],
+        ];
+    }
+
     public static function all_post_ids() {
-        $q = new WP_Query([
+        $args = [
             'post_type'      => self::post_types(),
             'post_status'    => 'publish',
             'posts_per_page' => -1,
@@ -35,7 +54,12 @@ class IL_Graph_Scanner {
             'orderby'        => 'ID',
             'order'          => 'ASC',
             'no_found_rows'  => true,
-        ]);
+        ];
+        $mq = self::noindex_exclusion_meta_query();
+        if (!empty($mq)) {
+            $args['meta_query'] = $mq;
+        }
+        $q = new WP_Query($args);
         return array_map('intval', $q->posts);
     }
 
