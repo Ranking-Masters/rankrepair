@@ -236,6 +236,17 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         if ($only_custom) {
             foreach ($custom as $item)     $graph[] = $item;
             foreach ($custom_all as $item) $graph[] = $item;
+
+            /**
+             * Laat thema's/plugins nodes toevoegen aan de @graph.
+             * Draait bewust vóór de empty-check: juist op pagina's waar RankRepair
+             * zelf niets opbouwt wil een thema vaak alsnog iets toevoegen.
+             *
+             * @param array $graph   Lijst met schema-nodes.
+             * @param array $context Context van de huidige pagina (zie detect_context()).
+             */
+            $graph = apply_filters('rr_sd_graph', $graph, $context);
+
             if (empty($graph)) return;
             $output = ['@context' => 'https://schema.org', '@graph' => $graph];
             echo "\n<!-- RankRepair Structured Data -->\n";
@@ -283,6 +294,9 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
             $faq = $builder->build_faqpage($context);
             if ($faq) $graph[] = $faq;
         }
+
+        /** Zie toelichting bij de filter in de "alleen eigen JSON"-modus hierboven. */
+        $graph = apply_filters('rr_sd_graph', $graph, $context);
 
         if (empty($graph)) return;
 
