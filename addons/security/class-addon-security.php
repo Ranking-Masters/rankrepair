@@ -40,12 +40,18 @@ class RR_Addon_Security extends RR_Addon_Base {
         $this->description = __('IP-blocklist/whitelist, aangepaste login-URL en toegangslog.', 'rankrepair');
         $this->icon        = 'dashicons-shield';
 
-        // Blokkade op 'init' (pluggable functies + ingelogde gebruiker zijn dan bekend,
-        // zodat we beheerders nooit buitensluiten) maar vóór enige front-end output.
-        add_action('init', [$this, 'maybe_block'], 0);
+        // LET OP timing: addons worden pas geïnstantieerd op 'init' priority 5
+        // (zie rankrepair.php register_addons). 'plugins_loaded' en 'init' prio 0
+        // zijn op dat moment al gepasseerd, dus moeten onze hooks op 'init' met een
+        // priority > 5 draaien. Prio 6 is nog ruim vóór enige front-end output
+        // (template_redirect/rendering), en pluggable functies + ingelogde gebruiker
+        // zijn op 'init' bekend, zodat we beheerders nooit buitensluiten.
+        add_action('init', [$this, 'maybe_block'], 6);
 
-        // Custom login-URL moet vroeg, vóór wp-login.php laadt.
-        add_action('plugins_loaded', [$this, 'login_guard'], 1);
+        // Custom login-URL: ook op 'init' prio 6. Bij een request naar /wp-login.php
+        // of de geheime slug vuurt 'init' (via wp-settings) vóórdat wp-login.php zijn
+        // eigen body uitvoert, dus we kunnen nog op tijd 404'en of het formulier serveren.
+        add_action('init', [$this, 'login_guard'], 6);
         add_filter('site_url', [$this, 'filter_login_url'], 10, 2);
         add_filter('wp_redirect', [$this, 'filter_login_redirect'], 10, 1);
 
@@ -77,6 +83,16 @@ class RR_Addon_Security extends RR_Addon_Base {
 
     private function whitelist(): array {
         return RR_Security_IP::normalize_list(get_option(self::OPT_WHITE, ''));
+    }
+
+    /**
+     * Dashboard-statistiek. De generieke dashboard-labels ("pagina's" /
+     * "problemen gevonden") passen niet bij een beveiligings-addon, dus we
+     * geven nullen terug zodat de kaart simpelweg "Actief" toont. De echte
+     * cijfers (blocklist-grootte, geblokkeerde pogingen) staan op de addon-pagina.
+     */
+    public function get_stats() {
+        return ['total' => 0, 'issues' => 0];
     }
 
     // =====================================================================
