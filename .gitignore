@@ -4,3 +4,6 @@ node_modules/
 vendor/
 *.log
 .env
+
+# Superpowers SDD scratch/ledger (local only)
+.superpowers/

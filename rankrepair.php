@@ -86,6 +86,7 @@ final class RankRepair {
             'image-optimizer'   => RR_PLUGIN_DIR . 'addons/image-optimizer/class-addon-image-optimizer.php',
             'form-tester'       => RR_PLUGIN_DIR . 'addons/form-tester/class-addon-form-tester.php',
             'internal-links'    => RR_PLUGIN_DIR . 'addons/internal-links/class-addon-internal-links.php',
+            'security'          => RR_PLUGIN_DIR . 'addons/security/class-addon-security.php',
         ];
 
         foreach ($addon_files as $slug => $file) {
@@ -109,6 +110,7 @@ final class RankRepair {
             'image-optimizer'   => ['name' => __('Image Optimizer', 'rankrepair'),       'icon' => '🖼️', 'bg' => '#D1FAE5'],
             'form-tester'       => ['name' => __('Formulieren Tester', 'rankrepair'),    'icon' => '📋', 'bg' => '#FEF3C7'],
             'internal-links'    => ['name' => __('Interne Links', 'rankrepair'),        'icon' => '🔗', 'bg' => '#E0F2FE'],
+            'security'          => ['name' => __('Beveiliging', 'rankrepair'),          'icon' => '🛡️', 'bg' => '#FEE2E2'],
         ];
     }
 

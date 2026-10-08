@@ -52,6 +52,12 @@ $options = [
     'rr_agent_last_response',
     'rr_agent_linked_client',
     'rr_level4_url',
+    'rr_security_enabled',
+    'rr_security_blocklist',
+    'rr_security_whitelist',
+    'rr_security_trusted_header',
+    'rr_security_login_slug',
+    'rr_security_log',
     'rr_malware_scan_result',
     'rr_malware_scan_progress',
     // Interne Links
