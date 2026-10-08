@@ -34,6 +34,18 @@ stevige lockout-beveiliging. Puur lokaal — geen Level4.
 `rr_security_enabled`, `rr_security_blocklist`, `rr_security_whitelist`, `rr_security_trusted_header`,
 `rr_security_login_slug`, `rr_security_log`. Opgeruimd in `uninstall.php`.
 
+## Ontwikkelomgeving-modus (toegevoegd 2026-10-08)
+Aparte schakelaar `rr_security_dev_mode` die de hele site (voor- én achterkant) afschermt
+voor de buitenwereld — bedoeld voor staging/dev. Onafhankelijk van de "Ingeschakeld"-toggle;
+respecteert de noodknop en de CLI-uitzondering.
+- **Toegestaan:** ingelogde gebruikers (elke rol), bezoekers vanaf een **whitelist-IP** (ook
+  uitgelogd), en het inlog-mechanisme (geheime slug / `wp-login.php` / `admin-ajax` /
+  `admin-post` / cron) — zodat je jezelf nooit buitensluit.
+- **Afgeschermd:** al het andere → **HTTP 503** (Service Unavailable) + `Retry-After` +
+  `X-Robots-Tag: noindex, nofollow` + een eenvoudige 🚧-pagina. SEO-veilig: dev-URLs worden
+  niet geïndexeerd/gedeïndexeerd.
+- Hook: `maybe_dev_gate()` op `init` prio 6, ná `login_guard`.
+
 ## Buiten v1 (uitbreidbaar)
 Automatisch blokkeren bij formulier-misbruik, rate-limiting, geoblocking, dedicated log-tabel
 (i.p.v. optie) voor hoog-volume.

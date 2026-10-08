@@ -21,6 +21,7 @@ class RR_Addon_Security extends RR_Addon_Base {
     const OPT_HEADER  = 'rr_security_trusted_header';
     const OPT_LOGIN   = 'rr_security_login_slug';
     const OPT_LOG     = 'rr_security_log';
+    const OPT_DEV     = 'rr_security_dev_mode';
     const MAX_LOG     = 100;
 
     /** Toegestane vertrouwde proxy-headers (key => label). */
@@ -52,6 +53,12 @@ class RR_Addon_Security extends RR_Addon_Base {
         // of de geheime slug vuurt 'init' (via wp-settings) vóórdat wp-login.php zijn
         // eigen body uitvoert, dus we kunnen nog op tijd 404'en of het formulier serveren.
         add_action('init', [$this, 'login_guard'], 6);
+
+        // Ontwikkelomgeving-modus: hele site afschermen (503 + noindex) voor
+        // bezoekers die niet ingelogd zijn en niet op de whitelist staan. Draait
+        // ná login_guard zodat de login-URL bereikbaar blijft.
+        add_action('init', [$this, 'maybe_dev_gate'], 6);
+
         add_filter('site_url', [$this, 'filter_login_url'], 10, 2);
         add_filter('wp_redirect', [$this, 'filter_login_redirect'], 10, 1);
 
@@ -220,6 +227,64 @@ class RR_Addon_Security extends RR_Addon_Base {
     }
 
     // =====================================================================
+    // Ontwikkelomgeving-modus (hele site verbergen)
+    // =====================================================================
+
+    /**
+     * Schermt de hele site (voor- én achterkant) af zodra "ontwikkelomgeving"
+     * aanstaat. Toegestaan: ingelogde gebruikers, bezoekers vanaf een whitelist-IP,
+     * en het inlog-mechanisme (zodat je niet buitengesloten raakt). De rest krijgt
+     * een 503 (Service Unavailable) met noindex, zodat zoekmachines de dev-site niet
+     * indexeren. Onafhankelijk van de "Ingeschakeld"-toggle; respecteert de noodknop.
+     */
+    public function maybe_dev_gate() {
+        if (defined('RR_SECURITY_DISABLE') && RR_SECURITY_DISABLE) { return; }
+        if (defined('WP_CLI') && WP_CLI) { return; }
+        if (get_option(self::OPT_DEV, '0') !== '1') { return; }
+
+        // Ingelogde gebruikers mogen er altijd in (team/klant die meekijkt).
+        if (is_user_logged_in()) { return; }
+
+        // Whitelist-IP mag er ook uitgelogd in.
+        $ip = $this->current_ip();
+        if ($ip !== '' && RR_Security_IP::ip_in_list($ip, $this->whitelist())) { return; }
+
+        // Login-mechanisme en achtergrond-endpoints moeten bereikbaar blijven.
+        if (defined('DOING_CRON') && DOING_CRON) { return; }
+        $path = $this->request_path();
+        $slug = $this->login_slug();
+        if ($path === 'wp-login.php') { return; }
+        if ($slug !== '' && $path === $slug) { return; }
+        if ($path === 'wp-admin/admin-ajax.php' || $path === 'wp-admin/admin-post.php') { return; }
+
+        $this->dev_unavailable();
+    }
+
+    private function dev_unavailable() {
+        if (!headers_sent()) {
+            status_header(503);
+            nocache_headers();
+            header('Retry-After: 3600');
+            header('X-Robots-Tag: noindex, nofollow', true);
+            header('Content-Type: text/html; charset=utf-8');
+        }
+        $title = __('Nog niet beschikbaar', 'rankrepair');
+        $msg   = __('Deze website is momenteel in ontwikkeling en nog niet beschikbaar.', 'rankrepair');
+        echo '<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8">';
+        echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
+        echo '<meta name="robots" content="noindex,nofollow">';
+        echo '<title>' . esc_html($title) . '</title>';
+        echo '<style>html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;'
+           . 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;'
+           . 'background:#0f172a;color:#e2e8f0}.rr-dev{max-width:460px;padding:40px;text-align:center}'
+           . '.rr-dev .ico{font-size:48px;line-height:1}.rr-dev h1{font-size:22px;margin:16px 0 8px}'
+           . '.rr-dev p{margin:0;color:#94a3b8;font-size:15px;line-height:1.5}</style></head>';
+        echo '<body><div class="rr-dev"><div class="ico">🚧</div><h1>' . esc_html($title) . '</h1>';
+        echo '<p>' . esc_html($msg) . '</p></div></body></html>';
+        exit;
+    }
+
+    // =====================================================================
     // Admin-pagina
     // =====================================================================
 
@@ -228,6 +293,7 @@ class RR_Addon_Security extends RR_Addon_Base {
         check_admin_referer('rr_security_save');
 
         update_option(self::OPT_ENABLED, isset($_POST['enabled']) ? '1' : '0', false);
+        update_option(self::OPT_DEV, isset($_POST['dev_mode']) ? '1' : '0', false);
 
         $header = isset($_POST['trusted_header']) ? sanitize_text_field(wp_unslash($_POST['trusted_header'])) : '';
         if (!array_key_exists($header, self::trusted_headers())) { $header = ''; }
@@ -254,6 +320,7 @@ class RR_Addon_Security extends RR_Addon_Base {
         $enabled   = get_option(self::OPT_ENABLED, '0') === '1';
         $slug      = (string) get_option(self::OPT_LOGIN, '');
         $log       = (array) get_option(self::OPT_LOG, []);
+        $dev_mode  = get_option(self::OPT_DEV, '0') === '1';
         $killed    = defined('RR_SECURITY_DISABLE') && RR_SECURITY_DISABLE;
 
         $this->render_header();
@@ -266,6 +333,10 @@ class RR_Addon_Security extends RR_Addon_Base {
             echo '<div class="notice notice-warning"><p><strong>' . esc_html__('Noodknop actief:', 'rankrepair') . '</strong> ' . esc_html__('RR_SECURITY_DISABLE staat in wp-config.php — alle blokkades en de custom login-URL zijn uitgeschakeld.', 'rankrepair') . '</p></div>';
         }
 
+        if ($dev_mode && !$killed) {
+            echo '<div class="notice notice-warning"><p><strong>' . esc_html__('Ontwikkelomgeving actief:', 'rankrepair') . '</strong> ' . esc_html__('de hele site is afgeschermd (503 + noindex) voor bezoekers die niet ingelogd zijn en niet op de whitelist staan.', 'rankrepair') . '</p></div>';
+        }
+
         echo '<p>' . esc_html__('Jouw huidige IP:', 'rankrepair') . ' <code>' . esc_html($ip ?: '—') . '</code></p>';
         if ($self_risk) {
             echo '<div class="notice notice-error"><p><strong>' . esc_html__('Let op:', 'rankrepair') . '</strong> ' . esc_html__('jouw eigen IP zou met deze lijsten geblokkeerd worden. Zet het op de whitelist voordat je opslaat — ingelogde beheerders worden weliswaar nooit geblokkeerd, maar wees voorzichtig.', 'rankrepair') . '</p></div>';
@@ -276,6 +347,8 @@ class RR_Addon_Security extends RR_Addon_Base {
         echo '<input type="hidden" name="action" value="rr_security_save">';
 
         echo '<table class="form-table"><tbody>';
+
+        echo '<tr><th>' . esc_html__('Ontwikkelomgeving', 'rankrepair') . '</th><td><label><input type="checkbox" name="dev_mode" value="1" ' . checked($dev_mode, true, false) . '> ' . esc_html__('Hele site verbergen voor de buitenwereld', 'rankrepair') . '</label><p class="description">' . esc_html__('Voor staging/dev. Bezoekers die niet ingelogd zijn én niet op de whitelist staan, krijgen een 503-pagina met noindex — voorkant én achterkant. Inloggen blijft bereikbaar.', 'rankrepair') . '</p></td></tr>';
 
         echo '<tr><th>' . esc_html__('Ingeschakeld', 'rankrepair') . '</th><td><label><input type="checkbox" name="enabled" value="1" ' . checked($enabled, true, false) . '> ' . esc_html__('Blokkades en login-URL actief', 'rankrepair') . '</label></td></tr>';
 
