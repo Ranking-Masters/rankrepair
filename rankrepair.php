@@ -87,6 +87,7 @@ final class RankRepair {
             'form-tester'       => RR_PLUGIN_DIR . 'addons/form-tester/class-addon-form-tester.php',
             'internal-links'    => RR_PLUGIN_DIR . 'addons/internal-links/class-addon-internal-links.php',
             'security'          => RR_PLUGIN_DIR . 'addons/security/class-addon-security.php',
+            'alt-text'          => RR_PLUGIN_DIR . 'addons/alt-text/class-addon-alt-text.php',
         ];
 
         foreach ($addon_files as $slug => $file) {
@@ -111,6 +112,7 @@ final class RankRepair {
             'form-tester'       => ['name' => __('Formulieren Tester', 'rankrepair'),    'icon' => '📋', 'bg' => '#FEF3C7'],
             'internal-links'    => ['name' => __('Interne Links', 'rankrepair'),        'icon' => '🔗', 'bg' => '#E0F2FE'],
             'security'          => ['name' => __('Beveiliging', 'rankrepair'),          'icon' => '🛡️', 'bg' => '#FEE2E2'],
+            'alt-text'          => ['name' => __('Alt-teksten', 'rankrepair'),          'icon' => '🖼️', 'bg' => '#EDE9FE'],
         ];
     }
 

@@ -1,0 +1,49 @@
+.rr-alt { max-width: 1100px; }
+.rr-alt-intro { font-size: 14px; color: #475569; margin: 8px 0 4px; }
+.rr-alt-actions { margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.rr-alt-status { min-height: 20px; margin: 8px 0; color: #475569; }
+.rr-alt-status .rr-alt-err { color: #b91c1c; }
+
+.rr-alt-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+    margin-top: 10px;
+}
+.rr-alt-list.rr-alt-loading { opacity: .5; pointer-events: none; }
+
+.rr-alt-card {
+    display: flex;
+    gap: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+}
+.rr-alt-card.rr-alt-done { border-color: #16a34a; background: #f0fdf4; }
+
+.rr-alt-thumb { flex: 0 0 96px; }
+.rr-alt-thumb img {
+    width: 96px; height: 96px; object-fit: cover;
+    border-radius: 8px; background: #f1f5f9; display: block;
+}
+.rr-alt-noimg {
+    width: 96px; height: 96px; border-radius: 8px; background: #f1f5f9;
+    display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 28px;
+}
+
+.rr-alt-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.rr-alt-name {
+    font-weight: 600; font-size: 13px; color: #0f172a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rr-alt-editlink { text-decoration: none; color: #2563eb; font-weight: 400; }
+.rr-alt-text { width: 100%; resize: vertical; font-size: 13px; }
+
+.rr-alt-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rr-alt-state { font-size: 12px; color: #475569; }
+.rr-alt-state.rr-alt-err { color: #b91c1c; }
+
+.rr-alt-empty { font-size: 15px; color: #16a34a; }
+.rr-alt-pager { margin: 16px 0; display: flex; align-items: center; gap: 10px; }
+.rr-alt-pageinfo { color: #475569; font-size: 13px; }
