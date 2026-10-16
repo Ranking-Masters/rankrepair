@@ -16,13 +16,48 @@ class RR_Alt_Text {
     const SOFT_MAX = 125;
     const HARD_MAX = 200;
 
-    /** De instructie voor het vision-model. */
-    public static function build_prompt(): string {
-        return 'Beschrijf deze afbeelding in één korte, feitelijke Nederlandse zin, '
-             . 'bedoeld als alt-attribuut voor toegankelijkheid. '
-             . 'Begin NIET met "afbeelding van", "foto van" of "plaatje van". '
-             . 'Gebruik geen aanhalingstekens. Maximaal ongeveer ' . self::SOFT_MAX . ' tekens. '
-             . 'Geen opsomming, geen keyword-stuffing, alleen wat zichtbaar is.';
+    /**
+     * De instructie voor het vision-model. $hint = optionele context uit de
+     * bestandsnaam/titel (merk- of productnaam), alleen te gebruiken als relevant.
+     */
+    public static function build_prompt(string $hint = ''): string {
+        $p = 'Beschrijf deze afbeelding in één korte, feitelijke Nederlandse zin, '
+           . 'bedoeld als alt-attribuut voor toegankelijkheid. '
+           . 'Begin NIET met "afbeelding van", "foto van" of "plaatje van". '
+           . 'Gebruik geen aanhalingstekens. Maximaal ongeveer ' . self::SOFT_MAX . ' tekens. '
+           . 'Geen opsomming, geen keyword-stuffing, alleen wat zichtbaar is. '
+           . 'Als het duidelijk een logo is, schrijf dan "Logo van <merknaam>".';
+        if ($hint !== '') {
+            $p .= ' Context ter ondersteuning (uit de bestandsnaam/titel), gebruik dit ALLEEN als het '
+                . 'echt relevant is — bijvoorbeeld de merk- of productnaam bij een logo of productfoto — '
+                . 'en negeer betekenisloze namen: "' . $hint . '".';
+        }
+        return $p;
+    }
+
+    /**
+     * Maakt van een bestandsnaam een bruikbare context-hint (merk/onderwerp), of ''
+     * als de naam niets zegt (DSC0001, IMG_1234, Group-2, screenshot, …).
+     */
+    public static function filename_hint(string $filename): string {
+        $name = preg_replace('/\.[a-z0-9]{2,5}$/i', '', $filename);   // extensie weg
+        $name = preg_replace('/[_\-]+/', ' ', (string) $name);         // scheidingstekens -> spatie
+        $name = preg_replace('/\b\d{2,4}x\d{2,4}\b/', ' ', $name);     // afmetingen (1024x768) weg
+        $name = preg_replace('/\b(scaled|copy|kopie|final|def|edited|crop|cropped|klein|groot|web)\b/i', ' ', $name);
+        $name = preg_replace('/\s+/', ' ', (string) $name);
+        $name = trim((string) $name);
+
+        if ($name === '') {
+            return '';
+        }
+        // Betekenisloze camera-/exportnamen onderdrukken.
+        if (preg_match('/^(img|dsc|dscf|images?|fotos?|photos?|screenshots?|schermafbeeldingen?|groups?|untitled|naamloos|pexels|unsplash|istock)\s*\d*$/i', $name)) {
+            return '';
+        }
+        if (preg_match('/^[\d\s.]+$/', $name)) {   // alleen cijfers/punten over
+            return '';
+        }
+        return $name;
     }
 
     /**

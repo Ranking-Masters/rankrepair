@@ -186,7 +186,8 @@ class RR_Addon_Alt_Text extends RR_Addon_Base {
 
         $provider = get_option('rr_ai_provider', 'google');
         $model    = trim(get_option('rr_ai_model', ''));
-        $prompt   = RR_Alt_Text::build_prompt();
+        $hint     = RR_Alt_Text::filename_hint(wp_basename((string) get_attached_file($id)));
+        $prompt   = RR_Alt_Text::build_prompt($hint);
 
         if ($provider === 'openrouter') {
             if ($model === '') { $model = 'google/gemini-2.0-flash-001'; }
@@ -207,7 +208,11 @@ class RR_Addon_Alt_Text extends RR_Addon_Base {
                         ],
                     ]],
                     'temperature' => 0.4,
-                    'max_tokens'  => 120,
+                    // Ruim budget: "thinking"-modellen (bv. gemini-3.x) besteden tokens aan
+                    // redeneren; bij een te krap budget wordt de alt-tekst afgekapt. Reasoning
+                    // uitzetten mag bij sommige modellen niet, dus geven we gewoon ruimte.
+                    // Je betaalt alleen voor daadwerkelijk gebruikte tokens.
+                    'max_tokens'  => 1500,
                 ]),
                 'timeout' => 45,
             ]);
@@ -224,7 +229,11 @@ class RR_Addon_Alt_Text extends RR_Addon_Base {
                             ['inline_data' => ['mime_type' => $mime, 'data' => $b64]],
                         ],
                     ]],
-                    'generationConfig' => ['temperature' => 0.4, 'maxOutputTokens' => 120],
+                    'generationConfig' => [
+                        'temperature'     => 0.4,
+                        // Ruim budget: thinking-tokens tellen mee; te krap kapt de alt-tekst af.
+                        'maxOutputTokens' => 1500,
+                    ],
                 ]),
                 'timeout' => 45,
             ]);

@@ -15,6 +15,20 @@ function ok($cond, $msg) {
 
 // --- build_prompt ---
 ok(strpos(RR_Alt_Text::build_prompt(), 'Nederlandse') !== false, 'build_prompt: Nederlandstalige instructie');
+ok(strpos(RR_Alt_Text::build_prompt(), 'Logo van') !== false, 'build_prompt: logo-instructie aanwezig');
+ok(strpos(RR_Alt_Text::build_prompt(), 'Context') === false, 'build_prompt: geen context-blok zonder hint');
+ok(strpos(RR_Alt_Text::build_prompt('Furnea'), 'Furnea') !== false, 'build_prompt: hint verwerkt in prompt');
+
+// --- filename_hint ---
+ok(RR_Alt_Text::filename_hint('scan-logo-hoesjemaken.nl_.png') === 'scan logo hoesjemaken.nl', 'hint: logo-bestandsnaam met merk');
+ok(RR_Alt_Text::filename_hint('bmw-5-serie-touring-550e-xdrive.jpg') === 'bmw 5 serie touring 550e xdrive', 'hint: product/model uit filename');
+ok(RR_Alt_Text::filename_hint('Furnea.jpg') === 'Furnea', 'hint: enkele merknaam');
+ok(RR_Alt_Text::filename_hint('hoesjemaken-mobile-mockup.jpg') === 'hoesjemaken mobile mockup', 'hint: beschrijvende filename');
+ok(RR_Alt_Text::filename_hint('DSC03268.webp') === '', 'hint: DSC-cameranaam onderdrukt');
+ok(RR_Alt_Text::filename_hint('IMG_1234.jpg') === '', 'hint: IMG-cameranaam onderdrukt');
+ok(RR_Alt_Text::filename_hint('Group-2-scaled.webp') === '', 'hint: Group-2-scaled onderdrukt');
+ok(RR_Alt_Text::filename_hint('images.jpeg') === '', 'hint: generieke "images" onderdrukt');
+ok(RR_Alt_Text::filename_hint('foto-1024x768.jpg') === '', 'hint: afmetingen + generiek onderdrukt');
 
 // --- sanitize_alt: basis ---
 ok(RR_Alt_Text::sanitize_alt('  Een rode fiets tegen een muur  ') === 'Een rode fiets tegen een muur', 'trimt spaties');
