@@ -101,7 +101,7 @@ class RR_Agent {
         if ( $opt ) {
             return rtrim( $opt, '/' );
         }
-        return 'https://level4-proposal-generator.vercel.app';
+        return 'https://level4.rankingmasters.nl';
     }
 
     public function add_cron_schedule( $schedules ) {
