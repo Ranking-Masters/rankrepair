@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.4
+Stable tag: 1.9.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,9 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.5 =
+* Fix: Malware-scan — WebP/AVIF-beeldconversieregels (ShortPixel e.d.) in .htaccess worden niet meer als `cloaked_redirect` gemeld. Een regel met een User-Agent/Accept-conditie die alleen foto.jpg naar foto.jpg.webp/.avif herschrijft is geen cloaking. Echte cloaking (redirect, extern doel, R/P-flag, ander doel dan een beeld) blijft kritiek. Alle UA/referer-gebonden regels worden nu beoordeeld, niet alleen de eerste.
 
 = 1.9.4 =
 * Nieuw: Structured Data — `rr_sd_graph`-filter waarmee een thema per pagina nodes aan de bestaande @graph kan toevoegen, in plaats van een los <script> in de head. Voorheen was alleen site-brede JSON per contexttype mogelijk. De filter krijgt de paginacontext mee (`type`, `post_id`, enz.) en voegt uit zichzelf niets toe — bestaande sites veranderen dus niet.
