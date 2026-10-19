@@ -24,6 +24,11 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         $builder_file  = __DIR__ . '/class-sd-builder.php';
         $scanner_file  = __DIR__ . '/class-sd-scanner.php';
         $template_file = __DIR__ . '/class-sd-template.php';
+        $term_img_file = __DIR__ . '/class-sd-term-image.php';
+        if (file_exists($term_img_file)) {
+            require_once $term_img_file;
+            RR_SD_Term_Image::register_hooks();
+        }
         if (file_exists($builder_file))  require_once $builder_file;
         if (file_exists($scanner_file))  require_once $scanner_file;
         if (file_exists($template_file)) require_once $template_file;

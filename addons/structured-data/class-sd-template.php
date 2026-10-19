@@ -20,8 +20,14 @@ class RR_SD_Template {
     public function apply(string $json, array $context): string {
         if (trim($json) === '') return $json;
 
+        $array_vars  = $this->build_array_vars($context);
+        $scalar_vars = $this->build_scalar_vars($context, $json);
+
+        // Stap 0: placeholders zonder waarde → de hele key weglaten (geen "image": "").
+        $json = self::drop_empty_placeholders($json, $scalar_vars, $array_vars);
+
         // Stap 1: array tokens (vervang quoted token met JSON-array)
-        foreach ($this->build_array_vars($context) as $key => $value) {
+        foreach ($array_vars as $key => $value) {
             $needle      = '"{{' . $key . '}}"';
             $replacement = wp_json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             if ($replacement === false) continue;
@@ -30,7 +36,7 @@ class RR_SD_Template {
 
         // Stap 2: scalar tokens — JSON-escape de waarde zodat newlines, quotes en
         // backslashes binnen string-slots geldige JSON blijven opleveren.
-        foreach ($this->build_scalar_vars($context) as $key => $value) {
+        foreach ($scalar_vars as $key => $value) {
             $escaped = wp_json_encode((string) $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             // wp_json_encode wraps de string in quotes — strip die omdat onze
             // placeholder al binnen "..." staat in de template.
@@ -43,6 +49,73 @@ class RR_SD_Template {
         }
 
         return $json;
+    }
+
+    /**
+     * Haalt keys weg waarvan de waarde precies één placeholder is die leeg uitkomt
+     * ("image": "{{term_image}}" zonder afbeelding). Een lege string of lege lijst
+     * is ongeldig/nutteloos schema, dus de key hoort er dan niet te staan.
+     *
+     * - Alleen waarden die uit niets anders dan de placeholder bestaan; een placeholder
+     *   midden in een tekst blijft zoals hij was.
+     * - Wordt een object daardoor een leeg omhulsel (alleen @type/@id/@context over,
+     *   bv. een ImageObject zonder url), dan gaat dat object ook weg.
+     * - Verandert er niets, dan komt de invoer byte-voor-byte terug (geen herformattering).
+     * - Ongeldige JSON blijft ongemoeid.
+     *
+     * @param array<string,mixed> $scalars
+     * @param array<string,mixed> $arrays
+     */
+    public static function drop_empty_placeholders(string $json, array $scalars, array $arrays): string {
+        $empty = [];
+        foreach ($scalars as $key => $value) {
+            if (trim((string) $value) === '') $empty['{{' . $key . '}}'] = true;
+        }
+        foreach ($arrays as $key => $value) {
+            if ($value === [] || $value === null || $value === '') $empty['{{' . $key . '}}'] = true;
+        }
+        if (!$empty) return $json;
+
+        $any = false;
+        foreach (array_keys($empty) as $token) {
+            if (strpos($json, $token) !== false) { $any = true; break; }
+        }
+        if (!$any) return $json;
+
+        $data = json_decode($json, true);
+        if (!is_array($data)) return $json;
+
+        $pruned = self::prune_empty($data, $empty);
+        if ($pruned === $data) return $json;
+
+        $out = wp_json_encode($pruned, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return is_string($out) ? $out : $json;
+    }
+
+    /**
+     * @param array<string,bool> $empty Tokens ("{{x}}") die leeg uitkomen.
+     */
+    public static function prune_empty(array $node, array $empty): array {
+        $is_list = $node === [] || array_keys($node) === range(0, count($node) - 1);
+        $out     = [];
+        foreach ($node as $key => $value) {
+            if (is_string($value) && isset($empty[trim($value)])) {
+                continue;
+            }
+            if (is_array($value)) {
+                $child = self::prune_empty($value, $empty);
+                if ($child !== $value && !array_diff(array_keys($child), ['@type', '@id', '@context'])) {
+                    continue; // leeg omhulsel (of lege lijst) na het weglaten
+                }
+                $value = $child;
+            }
+            if ($is_list) {
+                $out[] = $value;
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -69,6 +142,7 @@ class RR_SD_Template {
             'date_modified'          => 'ISO 8601 laatste-gewijzigd datum',
             'author_name'            => 'Naam van post-auteur',
             'featured_image'         => 'URL van uitgelichte afbeelding (large)',
+            'term_image'             => 'URL van de categorieafbeelding (WC-thumbnail; is die leeg of een logo → grootste subcategorie → eerste product). Leeg = key wordt weggelaten',
 
             // Productpagina-placeholders (alleen gevuld op single product)
             'product_name'                 => 'Naam van WooCommerce product',
@@ -83,7 +157,7 @@ class RR_SD_Template {
         ];
     }
 
-    private function build_scalar_vars(array $context): array {
+    private function build_scalar_vars(array $context, ?string $json = null): array {
         $term = $context['term'] ?? null;
         $url  = $context['url'] ?? home_url('/');
 
@@ -124,7 +198,13 @@ class RR_SD_Template {
             'date_modified'   => '',
             'author_name'     => '',
             'featured_image'  => '',
+            'term_image'      => '',
         ];
+
+        // Categorieafbeelding: pas uitrekenen als de template hem ook gebruikt (dit kost queries).
+        if ($term && class_exists('RR_SD_Term_Image') && ($json === null || strpos($json, '{{term_image}}') !== false)) {
+            $vars['term_image'] = RR_SD_Term_Image::for_term($term);
+        }
 
         // Post-specifieke data (voor blog posts / pages)
         if (!empty($context['post_id']) && empty($vars['product_name'])) {
