@@ -10,6 +10,18 @@ if (!defined('ABSPATH')) {
 
 class RR_SD_Builder {
 
+    /**
+     * Mag de vaste bedrijfsafbeelding (rr_sd_org_image) bij de Organization van deze pagina?
+     * Niet op term-pagina's (productcategorieën, blogcategorieën, tags). Aan te passen met
+     * het filter rr_sd_org_image_on_term_pages.
+     */
+    public static function org_image_allowed(array $context): bool {
+        if (empty($context['term'])) {
+            return true;
+        }
+        return (bool) apply_filters('rr_sd_org_image_on_term_pages', false, $context);
+    }
+
     public function build_organization(array $context): ?array {
         $name = trim(get_option('rr_sd_org_name', '') ?: get_bloginfo('name'));
         if ($name === '') return null;
@@ -27,8 +39,10 @@ class RR_SD_Builder {
         $logo = trim(get_option('rr_sd_org_logo', ''));
         if ($logo) $org['logo'] = $logo;
 
+        // Op term-pagina's (categorieën) hoort bij de Organization alleen het logo: een vaste
+        // bedrijfsafbeelding zou daar op elke categorie dezelfde foto als "afbeelding van de pagina" geven.
         $image = trim(get_option('rr_sd_org_image', ''));
-        if ($image) $org['image'] = $image;
+        if ($image && self::org_image_allowed($context)) $org['image'] = $image;
 
         $desc = trim(get_option('rr_sd_org_description', ''));
         if ($desc) $org['description'] = $desc;

@@ -142,6 +142,7 @@ class RR_SD_Template {
             'date_modified'          => 'ISO 8601 laatste-gewijzigd datum',
             'author_name'            => 'Naam van post-auteur',
             'featured_image'         => 'URL van uitgelichte afbeelding (large)',
+            'org_logo'               => 'URL van het bedrijfslogo (instelling "Logo" van de Structured Data-add-on). Leeg = key wordt weggelaten',
             'term_image'             => 'URL van de categorieafbeelding (WC-thumbnail; is die leeg of een logo → grootste subcategorie → eerste product). Leeg = key wordt weggelaten',
 
             // Productpagina-placeholders (alleen gevuld op single product)
@@ -199,6 +200,7 @@ class RR_SD_Template {
             'author_name'     => '',
             'featured_image'  => '',
             'term_image'      => '',
+            'org_logo'        => trim((string) get_option('rr_sd_org_logo', '')),
         ];
 
         // Categorieafbeelding: pas uitrekenen als de template hem ook gebruikt (dit kost queries).
@@ -546,6 +548,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -587,6 +590,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -614,6 +618,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -642,6 +647,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -653,6 +659,7 @@ class RR_SD_Template {
                     '@id'         => '{{url}}#collection',
                     'name'        => '{{name}}',
                     'url'         => '{{url}}',
+                    'image'       => '{{term_image}}',
                     'description' => '{{description}}',
                     'isPartOf'    => ['@id' => '{{home_url}}#blog'],
                 ],
@@ -669,6 +676,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -697,6 +705,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
             ],
         ]);
@@ -711,6 +720,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -730,6 +740,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -743,6 +754,7 @@ class RR_SD_Template {
                     'productGroupID' => '{{slug}}',
                     'url'            => '{{url}}',
                     'description'    => '{{description}}',
+                    'image'          => '{{term_image}}',
                     'brand'          => ['@id' => '{{org_id}}'],
                     'hasVariant'     => '{{children_variants}}',
                 ],
@@ -759,6 +771,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -797,6 +810,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -810,6 +824,7 @@ class RR_SD_Template {
                     'productGroupID' => '{{slug}}',
                     'url'            => '{{url}}',
                     'description'    => '{{description}}',
+                    'image'          => '{{term_image}}',
                     'brand'          => ['@id' => '{{org_id}}'],
                     'hasVariant'     => '{{product_variants}}',
                 ],
