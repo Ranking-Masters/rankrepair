@@ -209,6 +209,28 @@ class RR_SD_Scanner {
                     <span class="rr-sd-custom-state rr-sd-custom-state--err">✗ <?php _e('Ongeldige JSON', 'rankrepair'); ?></span>
                 <?php endif; ?>
             </summary>
+            <?php
+            // Controle: vaste afbeeldingen in templates die voor meerdere pagina's gelden.
+            $audit_templates = [];
+            foreach (array_keys($types) as $audit_type) {
+                $audit_templates[$audit_type] = (string) get_option('rr_sd_custom_jsonld_' . $audit_type, '');
+            }
+            $audit_templates['all'] = (string) get_option('rr_sd_custom_jsonld_all', '');
+            $audit = class_exists('RR_SD_Template') ? RR_SD_Template::audit_templates($audit_templates) : [];
+            if ($audit): ?>
+            <div class="notice notice-warning inline rr-sd-audit">
+                <p><strong><?php _e('Let op: vaste afbeelding in een template voor meerdere pagina\'s', 'rankrepair'); ?></strong><br>
+                <?php _e('Elke pagina van zo\'n type krijgt dan dezelfde afbeelding. Gebruik {{term_image}} (categorieën), {{featured_image}} (berichten en pagina\'s) of {{product_images}} (producten).', 'rankrepair'); ?></p>
+                <ul style="margin:0 0 .5em 1.2em;list-style:disc">
+                <?php foreach ($audit as $audit_type => $hits): ?>
+                    <?php foreach ($hits as $hit): ?>
+                        <li><code><?php echo esc_html($audit_type); ?></code> → <code><?php echo esc_html($hit['path']); ?></code>: <?php echo esc_html($hit['value']); ?></li>
+                    <?php endforeach; ?>
+                <?php endforeach; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
+
             <form method="post" class="rr-sd-custom-form">
                 <?php wp_nonce_field('rr_sd_custom_' . $selected); ?>
                 <p class="rr-sd-custom-hint">

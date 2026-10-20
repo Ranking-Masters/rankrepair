@@ -52,6 +52,80 @@ class RR_SD_Template {
     }
 
     /**
+     * Pagina-typen waarvan één template voor meerdere pagina's geldt. Een vaste afbeelding
+     * daarin geeft al die pagina's dezelfde afbeelding. Home, contact en de blogindex zijn
+     * enkele pagina's: daar is een vaste afbeelding prima.
+     */
+    public static function type_shares_template(string $type): bool {
+        if ($type === 'all' || $type === 'product' || $type === 'post' || $type === 'page' || $type === 'category') {
+            return true;
+        }
+        return strpos($type, 'product_cat_') === 0 || strpos($type, 'tax') === 0;
+    }
+
+    /**
+     * Zoekt vaste afbeeldings-URL's in een template (image, thumbnailUrl, photo, ook binnen
+     * een ImageObject). Een logo telt niet mee, en waarden met een {{placeholder}} ook niet.
+     *
+     * @return array<int,array{path:string,value:string}>
+     */
+    public static function find_hardcoded_images(string $json): array {
+        $data = json_decode($json, true);
+        if (!is_array($data)) return [];
+        $found = [];
+        self::walk_images($data, '', $found);
+        return $found;
+    }
+
+    private static function walk_images(array $node, string $path, array &$found): void {
+        foreach ($node as $key => $value) {
+            $here = $path === '' ? (string) $key : (is_int($key) ? $path . '[' . $key . ']' : $path . '.' . $key);
+            if (is_string($key) && in_array($key, ['image', 'thumbnailUrl', 'photo'], true)) {
+                self::collect_image_urls($value, $here, $found);
+                continue;
+            }
+            if (is_array($value)) {
+                self::walk_images($value, $here, $found);
+            }
+        }
+    }
+
+    private static function collect_image_urls($value, string $path, array &$found): void {
+        if (is_string($value)) {
+            $v = trim($value);
+            if ($v !== '' && strpos($v, '{{') === false && preg_match('#^(?:https?:)?//|^/#i', $v)) {
+                $found[] = ['path' => $path, 'value' => $v];
+            }
+            return;
+        }
+        if (!is_array($value)) return;
+        foreach ($value as $k => $item) {
+            if (is_int($k)) {
+                self::collect_image_urls($item, $path . '[' . $k . ']', $found);
+            } elseif ($k === 'url' || $k === 'contentUrl') {
+                self::collect_image_urls($item, $path . '.' . $k, $found);
+            }
+        }
+    }
+
+    /**
+     * Overzicht over alle opgeslagen templates: per pagina-type de vaste afbeeldingen,
+     * alleen voor typen waar één template voor veel pagina's geldt.
+     *
+     * @param array<string,string> $templates type => JSON
+     * @return array<string,array<int,array{path:string,value:string}>>
+     */
+    public static function audit_templates(array $templates): array {
+        $report = [];
+        foreach ($templates as $type => $json) {
+            if (!self::type_shares_template((string) $type) || trim((string) $json) === '') continue;
+            $hits = self::find_hardcoded_images((string) $json);
+            if ($hits) $report[(string) $type] = $hits;
+        }
+        return $report;
+    }
+
+    /**
      * Haalt keys weg waarvan de waarde precies één placeholder is die leeg uitkomt
      * ("image": "{{term_image}}" zonder afbeelding). Een lege string of lege lijst
      * is ongeldig/nutteloos schema, dus de key hoort er dan niet te staan.
