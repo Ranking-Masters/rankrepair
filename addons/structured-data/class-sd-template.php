@@ -20,7 +20,7 @@ class RR_SD_Template {
     public function apply(string $json, array $context): string {
         if (trim($json) === '') return $json;
 
-        $array_vars  = $this->build_array_vars($context);
+        $array_vars  = $this->build_array_vars($context, $json);
         $scalar_vars = $this->build_scalar_vars($context, $json);
 
         // Stap 0: placeholders zonder waarde → de hele key weglaten (geen "image": "").
@@ -245,15 +245,29 @@ class RR_SD_Template {
     /**
      * Bouw alle array-vars op basis van context.
      */
-    private function build_array_vars(array $context): array {
-        $vars = [
-            'breadcrumb_items'       => $this->build_breadcrumb_items($context),
-            'children_variants'      => $this->build_children_variants($context),
-            'children_variants_rich' => $this->build_children_variants_rich($context),
-            'product_variants'       => $this->build_product_variants($context),
+    private function build_array_vars(array $context, ?string $json = null): array {
+        $builders = [
+            'breadcrumb_items'       => fn() => $this->build_breadcrumb_items($context),
+            'children_variants'      => fn() => $this->build_children_variants($context),
+            'children_variants_rich' => fn() => $this->build_children_variants_rich($context),
+            'product_variants'       => fn() => $this->build_product_variants($context),
         ];
 
-        if (!empty($context['post_id']) && function_exists('wc_get_product')) {
+        // Alleen bouwen wat de JSON gebruikt: product_variants laadt tot 100 producten
+        // en kostte op categorieën met veel producten het PHP-geheugen, ook als de
+        // template de placeholder helemaal niet bevat.
+        $vars = [];
+        foreach ($builders as $key => $build) {
+            if ($json !== null && strpos($json, '{{' . $key . '}}') === false) continue;
+            $vars[$key] = $build();
+        }
+
+        $needs_product = $json === null
+            || strpos($json, '{{product_images}}') !== false
+            || strpos($json, '{{product_attributes}}') !== false
+            || strpos($json, '{{product_price_specifications}}') !== false;
+
+        if ($needs_product && !empty($context['post_id']) && function_exists('wc_get_product')) {
             $product = wc_get_product($context['post_id']);
             if ($product) {
                 $vars['product_images']               = $this->build_product_images($product);
