@@ -20,8 +20,14 @@ class RR_SD_Template {
     public function apply(string $json, array $context): string {
         if (trim($json) === '') return $json;
 
+        $array_vars  = $this->build_array_vars($context, $json);
+        $scalar_vars = $this->build_scalar_vars($context, $json);
+
+        // Stap 0: placeholders zonder waarde → de hele key weglaten (geen "image": "").
+        $json = self::drop_empty_placeholders($json, $scalar_vars, $array_vars);
+
         // Stap 1: array tokens (vervang quoted token met JSON-array)
-        foreach ($this->build_array_vars($context) as $key => $value) {
+        foreach ($array_vars as $key => $value) {
             $needle      = '"{{' . $key . '}}"';
             $replacement = wp_json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             if ($replacement === false) continue;
@@ -30,7 +36,7 @@ class RR_SD_Template {
 
         // Stap 2: scalar tokens — JSON-escape de waarde zodat newlines, quotes en
         // backslashes binnen string-slots geldige JSON blijven opleveren.
-        foreach ($this->build_scalar_vars($context) as $key => $value) {
+        foreach ($scalar_vars as $key => $value) {
             $escaped = wp_json_encode((string) $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             // wp_json_encode wraps de string in quotes — strip die omdat onze
             // placeholder al binnen "..." staat in de template.
@@ -43,6 +49,147 @@ class RR_SD_Template {
         }
 
         return $json;
+    }
+
+    /**
+     * Pagina-typen waarvan één template voor meerdere pagina's geldt. Een vaste afbeelding
+     * daarin geeft al die pagina's dezelfde afbeelding. Home, contact en de blogindex zijn
+     * enkele pagina's: daar is een vaste afbeelding prima.
+     */
+    public static function type_shares_template(string $type): bool {
+        if ($type === 'all' || $type === 'product' || $type === 'post' || $type === 'page' || $type === 'category') {
+            return true;
+        }
+        return strpos($type, 'product_cat_') === 0 || strpos($type, 'tax') === 0;
+    }
+
+    /**
+     * Zoekt vaste afbeeldings-URL's in een template (image, thumbnailUrl, photo, ook binnen
+     * een ImageObject). Een logo telt niet mee, en waarden met een {{placeholder}} ook niet.
+     *
+     * @return array<int,array{path:string,value:string}>
+     */
+    public static function find_hardcoded_images(string $json): array {
+        $data = json_decode($json, true);
+        if (!is_array($data)) return [];
+        $found = [];
+        self::walk_images($data, '', $found);
+        return $found;
+    }
+
+    private static function walk_images(array $node, string $path, array &$found): void {
+        foreach ($node as $key => $value) {
+            $here = $path === '' ? (string) $key : (is_int($key) ? $path . '[' . $key . ']' : $path . '.' . $key);
+            if (is_string($key) && in_array($key, ['image', 'thumbnailUrl', 'photo'], true)) {
+                self::collect_image_urls($value, $here, $found);
+                continue;
+            }
+            if (is_array($value)) {
+                self::walk_images($value, $here, $found);
+            }
+        }
+    }
+
+    private static function collect_image_urls($value, string $path, array &$found): void {
+        if (is_string($value)) {
+            $v = trim($value);
+            if ($v !== '' && strpos($v, '{{') === false && preg_match('#^(?:https?:)?//|^/#i', $v)) {
+                $found[] = ['path' => $path, 'value' => $v];
+            }
+            return;
+        }
+        if (!is_array($value)) return;
+        foreach ($value as $k => $item) {
+            if (is_int($k)) {
+                self::collect_image_urls($item, $path . '[' . $k . ']', $found);
+            } elseif ($k === 'url' || $k === 'contentUrl') {
+                self::collect_image_urls($item, $path . '.' . $k, $found);
+            }
+        }
+    }
+
+    /**
+     * Overzicht over alle opgeslagen templates: per pagina-type de vaste afbeeldingen,
+     * alleen voor typen waar één template voor veel pagina's geldt.
+     *
+     * @param array<string,string> $templates type => JSON
+     * @return array<string,array<int,array{path:string,value:string}>>
+     */
+    public static function audit_templates(array $templates): array {
+        $report = [];
+        foreach ($templates as $type => $json) {
+            if (!self::type_shares_template((string) $type) || trim((string) $json) === '') continue;
+            $hits = self::find_hardcoded_images((string) $json);
+            if ($hits) $report[(string) $type] = $hits;
+        }
+        return $report;
+    }
+
+    /**
+     * Haalt keys weg waarvan de waarde precies één placeholder is die leeg uitkomt
+     * ("image": "{{term_image}}" zonder afbeelding). Een lege string of lege lijst
+     * is ongeldig/nutteloos schema, dus de key hoort er dan niet te staan.
+     *
+     * - Alleen waarden die uit niets anders dan de placeholder bestaan; een placeholder
+     *   midden in een tekst blijft zoals hij was.
+     * - Wordt een object daardoor een leeg omhulsel (alleen @type/@id/@context over,
+     *   bv. een ImageObject zonder url), dan gaat dat object ook weg.
+     * - Verandert er niets, dan komt de invoer byte-voor-byte terug (geen herformattering).
+     * - Ongeldige JSON blijft ongemoeid.
+     *
+     * @param array<string,mixed> $scalars
+     * @param array<string,mixed> $arrays
+     */
+    public static function drop_empty_placeholders(string $json, array $scalars, array $arrays): string {
+        $empty = [];
+        foreach ($scalars as $key => $value) {
+            if (trim((string) $value) === '') $empty['{{' . $key . '}}'] = true;
+        }
+        foreach ($arrays as $key => $value) {
+            if ($value === [] || $value === null || $value === '') $empty['{{' . $key . '}}'] = true;
+        }
+        if (!$empty) return $json;
+
+        $any = false;
+        foreach (array_keys($empty) as $token) {
+            if (strpos($json, $token) !== false) { $any = true; break; }
+        }
+        if (!$any) return $json;
+
+        $data = json_decode($json, true);
+        if (!is_array($data)) return $json;
+
+        $pruned = self::prune_empty($data, $empty);
+        if ($pruned === $data) return $json;
+
+        $out = wp_json_encode($pruned, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        return is_string($out) ? $out : $json;
+    }
+
+    /**
+     * @param array<string,bool> $empty Tokens ("{{x}}") die leeg uitkomen.
+     */
+    public static function prune_empty(array $node, array $empty): array {
+        $is_list = $node === [] || array_keys($node) === range(0, count($node) - 1);
+        $out     = [];
+        foreach ($node as $key => $value) {
+            if (is_string($value) && isset($empty[trim($value)])) {
+                continue;
+            }
+            if (is_array($value)) {
+                $child = self::prune_empty($value, $empty);
+                if ($child !== $value && !array_diff(array_keys($child), ['@type', '@id', '@context'])) {
+                    continue; // leeg omhulsel (of lege lijst) na het weglaten
+                }
+                $value = $child;
+            }
+            if ($is_list) {
+                $out[] = $value;
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -69,6 +216,8 @@ class RR_SD_Template {
             'date_modified'          => 'ISO 8601 laatste-gewijzigd datum',
             'author_name'            => 'Naam van post-auteur',
             'featured_image'         => 'URL van uitgelichte afbeelding (large)',
+            'org_logo'               => 'URL van het bedrijfslogo (instelling "Logo" van de Structured Data-add-on). Leeg = key wordt weggelaten',
+            'term_image'             => 'URL van de categorieafbeelding (WC-thumbnail; is die leeg of een logo → grootste subcategorie → eerste product). Leeg = key wordt weggelaten',
 
             // Productpagina-placeholders (alleen gevuld op single product)
             'product_name'                 => 'Naam van WooCommerce product',
@@ -83,7 +232,7 @@ class RR_SD_Template {
         ];
     }
 
-    private function build_scalar_vars(array $context): array {
+    private function build_scalar_vars(array $context, ?string $json = null): array {
         $term = $context['term'] ?? null;
         $url  = $context['url'] ?? home_url('/');
 
@@ -124,7 +273,14 @@ class RR_SD_Template {
             'date_modified'   => '',
             'author_name'     => '',
             'featured_image'  => '',
+            'term_image'      => '',
+            'org_logo'        => trim((string) get_option('rr_sd_org_logo', '')),
         ];
+
+        // Categorieafbeelding: pas uitrekenen als de template hem ook gebruikt (dit kost queries).
+        if ($term && class_exists('RR_SD_Term_Image') && ($json === null || strpos($json, '{{term_image}}') !== false)) {
+            $vars['term_image'] = RR_SD_Term_Image::for_term($term);
+        }
 
         // Post-specifieke data (voor blog posts / pages)
         if (!empty($context['post_id']) && empty($vars['product_name'])) {
@@ -165,15 +321,29 @@ class RR_SD_Template {
     /**
      * Bouw alle array-vars op basis van context.
      */
-    private function build_array_vars(array $context): array {
-        $vars = [
-            'breadcrumb_items'       => $this->build_breadcrumb_items($context),
-            'children_variants'      => $this->build_children_variants($context),
-            'children_variants_rich' => $this->build_children_variants_rich($context),
-            'product_variants'       => $this->build_product_variants($context),
+    private function build_array_vars(array $context, ?string $json = null): array {
+        $builders = [
+            'breadcrumb_items'       => fn() => $this->build_breadcrumb_items($context),
+            'children_variants'      => fn() => $this->build_children_variants($context),
+            'children_variants_rich' => fn() => $this->build_children_variants_rich($context),
+            'product_variants'       => fn() => $this->build_product_variants($context),
         ];
 
-        if (!empty($context['post_id']) && function_exists('wc_get_product')) {
+        // Alleen bouwen wat de JSON gebruikt: product_variants laadt tot 100 producten
+        // en kostte op categorieën met veel producten het PHP-geheugen, ook als de
+        // template de placeholder helemaal niet bevat.
+        $vars = [];
+        foreach ($builders as $key => $build) {
+            if ($json !== null && strpos($json, '{{' . $key . '}}') === false) continue;
+            $vars[$key] = $build();
+        }
+
+        $needs_product = $json === null
+            || strpos($json, '{{product_images}}') !== false
+            || strpos($json, '{{product_attributes}}') !== false
+            || strpos($json, '{{product_price_specifications}}') !== false;
+
+        if ($needs_product && !empty($context['post_id']) && function_exists('wc_get_product')) {
             $product = wc_get_product($context['post_id']);
             if ($product) {
                 $vars['product_images']               = $this->build_product_images($product);
@@ -400,57 +570,14 @@ class RR_SD_Template {
     private function build_product_variants(array $context): array {
         $term = $context['term'] ?? null;
         if (!$term || empty($term->term_id)) return [];
-        if (!function_exists('wc_get_products')) return [];
+        if (!class_exists('RR_SD_Builder')) return [];
 
         $group_id = trailingslashit($context['url'] ?? '') . '#productgroup';
 
-        $products = wc_get_products([
-            'category' => [$term->slug],
-            'status'   => 'publish',
-            'limit'    => 100,
-            'orderby'  => 'menu_order',
-            'order'    => 'ASC',
-        ]);
-        if (empty($products)) return [];
-
+        // Lichte query i.p.v. wc_get_products(): zie RR_SD_Builder::light_products().
         $variants = [];
-        foreach ($products as $product) {
-            $url    = $product->get_permalink();
-            $img_id = $product->get_image_id();
-            $image  = $img_id ? wp_get_attachment_image_url($img_id, 'medium') : '';
-
-            $v = [
-                '@type'       => 'Product',
-                'name'        => $product->get_name(),
-                'description' => wp_strip_all_tags($product->get_short_description() ?: $product->get_name()),
-                'sku'         => $product->get_sku() ?: 'product-' . $product->get_id(),
-                'url'         => $url,
-            ];
-            if ($image) $v['image'] = $image;
-
-            $v['isVariantOf'] = [
-                '@type'          => 'ProductGroup',
-                '@id'            => $group_id,
-                'name'           => $term->name,
-                'productGroupID' => $term->slug,
-            ];
-
-            $price = $product->get_price();
-            if ($price !== '' && $price !== null) {
-                $currency = function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'EUR';
-                $v['offers'] = [
-                    '@type'           => 'Offer',
-                    'url'             => $url,
-                    'priceCurrency'   => $currency,
-                    'price'           => number_format((float) $price, 2, '.', ''),
-                    'availability'    => $product->is_in_stock()
-                        ? 'https://schema.org/InStock'
-                        : 'https://schema.org/OutOfStock',
-                    'priceValidUntil' => date('Y-12-31', strtotime('+2 years')),
-                ];
-            }
-
-            $variants[] = $v;
+        foreach (RR_SD_Builder::light_products($term->slug, 100) as $row) {
+            $variants[] = RR_SD_Builder::light_row_to_variant($row, $group_id, $term);
         }
         return $variants;
     }
@@ -495,6 +622,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -536,6 +664,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -563,6 +692,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -591,6 +721,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -602,6 +733,7 @@ class RR_SD_Template {
                     '@id'         => '{{url}}#collection',
                     'name'        => '{{name}}',
                     'url'         => '{{url}}',
+                    'image'       => '{{term_image}}',
                     'description' => '{{description}}',
                     'isPartOf'    => ['@id' => '{{home_url}}#blog'],
                 ],
@@ -618,6 +750,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -646,6 +779,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
             ],
         ]);
@@ -660,6 +794,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -679,6 +814,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -692,6 +828,7 @@ class RR_SD_Template {
                     'productGroupID' => '{{slug}}',
                     'url'            => '{{url}}',
                     'description'    => '{{description}}',
+                    'image'          => '{{term_image}}',
                     'brand'          => ['@id' => '{{org_id}}'],
                     'hasVariant'     => '{{children_variants}}',
                 ],
@@ -708,6 +845,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -746,6 +884,7 @@ class RR_SD_Template {
                     '@id'   => '{{org_id}}',
                     'name'  => '{{site_name}}',
                     'url'   => '{{home_url}}',
+                    'logo'  => '{{org_logo}}',
                 ],
                 [
                     '@type'           => 'BreadcrumbList',
@@ -759,6 +898,7 @@ class RR_SD_Template {
                     'productGroupID' => '{{slug}}',
                     'url'            => '{{url}}',
                     'description'    => '{{description}}',
+                    'image'          => '{{term_image}}',
                     'brand'          => ['@id' => '{{org_id}}'],
                     'hasVariant'     => '{{product_variants}}',
                 ],

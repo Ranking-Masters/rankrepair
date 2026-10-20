@@ -24,6 +24,11 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         $builder_file  = __DIR__ . '/class-sd-builder.php';
         $scanner_file  = __DIR__ . '/class-sd-scanner.php';
         $template_file = __DIR__ . '/class-sd-template.php';
+        $term_img_file = __DIR__ . '/class-sd-term-image.php';
+        if (file_exists($term_img_file)) {
+            require_once $term_img_file;
+            RR_SD_Term_Image::register_hooks();
+        }
         if (file_exists($builder_file))  require_once $builder_file;
         if (file_exists($scanner_file))  require_once $scanner_file;
         if (file_exists($template_file)) require_once $template_file;
@@ -164,6 +169,17 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                         esc_html__('Wil je eigen JSON-LD per pagina-type plakken (bv. Reviews voor homepage)? Ga naar ', 'rankrepair') .
                         '<a href="' . esc_url(admin_url('admin.php?page=rankrepair-structured-data')) . '" style="color:#7c3aed;font-weight:600">' . esc_html__('Structured Data → Inspector', 'rankrepair') . '</a>' .
                         esc_html__(' — daar vind je per pagina-type een eigen veld.', 'rankrepair') . '</p>',
+                ],
+                [
+                    'name'        => 'rr_sd_yoast_social_image',
+                    'label'       => __('Yoast social image voor categorieën', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — Yoast bepaalt de social image zelf', 'rankrepair'),
+                        '1' => __('Aan — categorieën zonder eigen social image krijgen de categorieafbeelding ({{term_image}})', 'rankrepair'),
+                    ],
+                    'description' => __('Alleen voor categorieën, tags en andere termen waarvan het social-imageveld in Yoast leeg is. Een afbeelding die in Yoast is ingesteld wordt nooit overschreven. Werkt ook direct voor nieuwe categorieën. Vereist Yoast SEO.', 'rankrepair'),
                 ],
                 [
                     'name'        => 'rr_sd_only_custom',
