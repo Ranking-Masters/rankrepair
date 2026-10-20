@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.6
+Stable tag: 1.9.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,9 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.7 =
+* Fix: Structured Data — het dashboardscherm van de inspector gaf in 1.9.6 een fatale fout ("Undefined variable $types", "array_keys(): Argument #1 must be of type array") door de nieuwe waarschuwing voor vaste afbeeldingen in templates. De website zelf werd er niet door geraakt, alleen het beheerscherm Structured Data. Opgelost, met een test die het scherm echt rendert.
 
 = 1.9.6 =
 * Nieuw: Structured Data — placeholder `{{term_image}}` voor de afbeelding van een categorie. Volgorde: WooCommerce-thumbnail van de categorie; ontbreekt die of is het een logo, dan de afbeelding van de grootste subcategorie, daarna het eerste product. Logo's worden herkend via het RankRepair-logo, het Yoast-bedrijfslogo, het thema-logo, de site-icon en een bestandsnaam met "logo". Het resultaat wordt per categorie bewaard en bij wijzigingen vernieuwd.

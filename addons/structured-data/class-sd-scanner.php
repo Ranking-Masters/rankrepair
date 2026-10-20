@@ -89,7 +89,7 @@ class RR_SD_Scanner {
                     <div class="notice notice-success" style="margin:0 0 16px;padding:10px 14px"><p><?php echo esc_html($saved_msg); ?></p></div>
                     <?php endif; ?>
 
-                    <?php $this->render_custom_jsonld_box($selected, $custom_value, $types[$selected]['label'] ?? $selected); ?>
+                    <?php $this->render_custom_jsonld_box($selected, $custom_value, $types[$selected]['label'] ?? $selected, $types); ?>
 
                     <?php if (!empty($suggested)): ?>
                     <div class="rr-sd-suggest">
@@ -181,7 +181,7 @@ class RR_SD_Scanner {
     /**
      * Render het "Eigen JSON-LD" paste-veld voor dit pagina-type.
      */
-    private function render_custom_jsonld_box(string $selected, string $value, string $human_label = ''): void {
+    private function render_custom_jsonld_box(string $selected, string $value, string $human_label = '', array $types = []): void {
         if (empty($human_label)) $human_label = $selected;
         // Validatie
         $valid = true; $count = 0;
