@@ -153,11 +153,53 @@ class RR_SD_Term_Image {
         self::bump_version();
     }
 
+    // ── Yoast social image (opt-in) ──────────────────────────────────────
+
+    /**
+     * Beslist welke afbeelding als social image (og:image) aan een term wordt toegevoegd.
+     * Alleen als de instelling aan staat én het social-imageveld van de term in Yoast leeg is;
+     * een door de redacteur gekozen afbeelding wordt dus nooit overschreven.
+     */
+    public static function decide_social_image(bool $enabled, string $own_field, string $resolved): string {
+        if (!$enabled || trim($own_field) !== '') {
+            return '';
+        }
+        return trim($resolved);
+    }
+
+    /**
+     * Yoast-hook wpseo_add_opengraph_images: zet de categorieafbeelding bovenaan de og:image-lijst
+     * (het filter wpseo_opengraph_image zelf vervangt alleen een afbeelding die er al is).
+     * Twitter volgt in Yoast de eerste og:image.
+     *
+     * @param object $image_container WPSEO_OpenGraph_Image
+     * @return object
+     */
+    public static function yoast_add_social_image($image_container) {
+        if (get_option('rr_sd_yoast_social_image', '0') !== '1' || !is_object($image_container) || !method_exists($image_container, 'add_image_by_url')) {
+            return $image_container;
+        }
+        if (!(is_category() || is_tag() || is_tax())) {
+            return $image_container;
+        }
+        $term = get_queried_object();
+        if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) {
+            return $image_container;
+        }
+        $own = (new RR_SD_Term_Image_WP_Source((string) $term->taxonomy))->yoast_image((int) $term->term_id);
+        $url = self::decide_social_image(true, $own, self::for_term($term));
+        if ($url !== '') {
+            $image_container->add_image_by_url($url);
+        }
+        return $image_container;
+    }
+
     public static function register_hooks(): void {
         foreach (['created_term', 'edited_term', 'delete_term', 'deleted_post', 'customize_save_after'] as $hook) {
             add_action($hook, [__CLASS__, 'bump_version']);
         }
         add_action('save_post', [__CLASS__, 'on_save_post'], 10, 2);
+        add_filter('wpseo_add_opengraph_images', [__CLASS__, 'yoast_add_social_image']);
         foreach (['rr_sd_org_logo', 'wpseo_titles', 'wpseo_taxonomy_meta', 'site_icon'] as $option) {
             add_action('update_option_' . $option, [__CLASS__, 'bump_version']);
         }

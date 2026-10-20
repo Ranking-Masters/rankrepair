@@ -146,5 +146,14 @@ ok(drop($bad, ['term_image' => '']) === $bad, 'ongeldige JSON blijft ongemoeid')
 
 ok(drop('{"name":"n"}', ['term_image' => '']) === '{"name":"n"}', 'template zonder die placeholder blijft ongemoeid');
 
+// ---------------------------------------------------------------------------
+// Yoast social image (opt-in): redacteurskeuze wordt nooit overschreven
+// ---------------------------------------------------------------------------
+ok(RR_SD_Term_Image::decide_social_image(true, '', 'https://x.nl/cat.jpg') === 'https://x.nl/cat.jpg', 'veld leeg + instelling aan → categorieafbeelding');
+ok(RR_SD_Term_Image::decide_social_image(true, 'https://x.nl/redactie.jpg', 'https://x.nl/cat.jpg') === '', 'veld in Yoast gevuld → niets overschrijven');
+ok(RR_SD_Term_Image::decide_social_image(false, '', 'https://x.nl/cat.jpg') === '', 'instelling uit → niets doen');
+ok(RR_SD_Term_Image::decide_social_image(true, '   ', 'https://x.nl/cat.jpg') === 'https://x.nl/cat.jpg', 'alleen spaties in het veld telt als leeg');
+ok(RR_SD_Term_Image::decide_social_image(true, '', '') === '', 'geen categorieafbeelding gevonden → niets toevoegen');
+
 echo $fail ? "$fail FAILED\n" : "ALL PASS\n";
 exit($fail ? 1 : 0);

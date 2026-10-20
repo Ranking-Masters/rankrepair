@@ -171,6 +171,17 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                         esc_html__(' — daar vind je per pagina-type een eigen veld.', 'rankrepair') . '</p>',
                 ],
                 [
+                    'name'        => 'rr_sd_yoast_social_image',
+                    'label'       => __('Yoast social image voor categorieën', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — Yoast bepaalt de social image zelf', 'rankrepair'),
+                        '1' => __('Aan — categorieën zonder eigen social image krijgen de categorieafbeelding ({{term_image}})', 'rankrepair'),
+                    ],
+                    'description' => __('Alleen voor categorieën, tags en andere termen waarvan het social-imageveld in Yoast leeg is. Een afbeelding die in Yoast is ingesteld wordt nooit overschreven. Werkt ook direct voor nieuwe categorieën. Vereist Yoast SEO.', 'rankrepair'),
+                ],
+                [
                     'name'        => 'rr_sd_only_custom',
                     'label'       => __('Modus', 'rankrepair'),
                     'type'        => 'select',
