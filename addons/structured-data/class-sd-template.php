@@ -494,57 +494,14 @@ class RR_SD_Template {
     private function build_product_variants(array $context): array {
         $term = $context['term'] ?? null;
         if (!$term || empty($term->term_id)) return [];
-        if (!function_exists('wc_get_products')) return [];
+        if (!class_exists('RR_SD_Builder')) return [];
 
         $group_id = trailingslashit($context['url'] ?? '') . '#productgroup';
 
-        $products = wc_get_products([
-            'category' => [$term->slug],
-            'status'   => 'publish',
-            'limit'    => 100,
-            'orderby'  => 'menu_order',
-            'order'    => 'ASC',
-        ]);
-        if (empty($products)) return [];
-
+        // Lichte query i.p.v. wc_get_products(): zie RR_SD_Builder::light_products().
         $variants = [];
-        foreach ($products as $product) {
-            $url    = $product->get_permalink();
-            $img_id = $product->get_image_id();
-            $image  = $img_id ? wp_get_attachment_image_url($img_id, 'medium') : '';
-
-            $v = [
-                '@type'       => 'Product',
-                'name'        => $product->get_name(),
-                'description' => wp_strip_all_tags($product->get_short_description() ?: $product->get_name()),
-                'sku'         => $product->get_sku() ?: 'product-' . $product->get_id(),
-                'url'         => $url,
-            ];
-            if ($image) $v['image'] = $image;
-
-            $v['isVariantOf'] = [
-                '@type'          => 'ProductGroup',
-                '@id'            => $group_id,
-                'name'           => $term->name,
-                'productGroupID' => $term->slug,
-            ];
-
-            $price = $product->get_price();
-            if ($price !== '' && $price !== null) {
-                $currency = function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'EUR';
-                $v['offers'] = [
-                    '@type'           => 'Offer',
-                    'url'             => $url,
-                    'priceCurrency'   => $currency,
-                    'price'           => number_format((float) $price, 2, '.', ''),
-                    'availability'    => $product->is_in_stock()
-                        ? 'https://schema.org/InStock'
-                        : 'https://schema.org/OutOfStock',
-                    'priceValidUntil' => date('Y-12-31', strtotime('+2 years')),
-                ];
-            }
-
-            $variants[] = $v;
+        foreach (RR_SD_Builder::light_products($term->slug, 100) as $row) {
+            $variants[] = RR_SD_Builder::light_row_to_variant($row, $group_id, $term);
         }
         return $variants;
     }

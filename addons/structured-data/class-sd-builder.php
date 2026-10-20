@@ -326,26 +326,113 @@ class RR_SD_Builder {
         }
 
         // Leaf categorie: haal echte WooCommerce producten op met prijzen
-        if (!function_exists('wc_get_products')) return $schema;
-
-        $products = wc_get_products([
-            'category' => [$term->slug],
-            'status'   => 'publish',
-            'limit'    => 50,
-            'orderby'  => 'menu_order',
-            'order'    => 'ASC',
-        ]);
-
-        if (empty($products)) return $schema;
+        $rows = self::light_products($term->slug, 50);
+        if (empty($rows)) return $schema;
 
         $variants = [];
-        foreach ($products as $product) {
-            $variants[] = $this->wc_product_to_variant($product, $group_id, $term);
+        foreach ($rows as $row) {
+            $variants[] = self::light_row_to_variant($row, $group_id, $term);
         }
-        if (!empty($variants)) {
-            $schema['hasVariant'] = $variants;
-        }
+        $schema['hasVariant'] = $variants;
         return $schema;
+    }
+
+    /**
+     * Lichte productlijst voor hasVariant: alleen de velden die het schema nodig heeft.
+     *
+     * wc_get_products() laadt per product de volledige postmeta (op sites met veel
+     * ACF-velden ~1000 rijen per product, tientallen MB bij 50 producten) en liet
+     * categoriepagina's met veel producten het PHP-geheugen overschrijden. Hier
+     * halen we de producten op zonder meta-cache en lezen we de vier benodigde
+     * meta-keys met één query.
+     */
+    public static function light_products(string $term_slug, int $limit): array {
+        global $wpdb;
+
+        $ids = get_posts([
+            'post_type'              => 'product',
+            'post_status'            => 'publish',
+            'posts_per_page'         => $limit,
+            'fields'                 => 'ids',
+            'orderby'                => ['menu_order' => 'ASC', 'title' => 'ASC'],
+            'no_found_rows'          => true,
+            'suppress_filters'       => false, // zoals wc_get_products(): taal-/WPML-filters blijven werken
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+            'tax_query'              => [[
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => $term_slug,
+            ]],
+        ]);
+        if (empty($ids)) return [];
+        $ids = array_map('intval', $ids);
+        $in  = implode(',', $ids);
+
+        $posts = [];
+        foreach ($wpdb->get_results("SELECT ID, post_title, post_excerpt FROM {$wpdb->posts} WHERE ID IN ($in)") as $p) {
+            $posts[(int) $p->ID] = $p;
+        }
+        $meta = [];
+        $keys = "'_sku','_price','_stock_status','_thumbnail_id'";
+        foreach ($wpdb->get_results("SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ($in) AND meta_key IN ($keys)") as $m) {
+            $meta[(int) $m->post_id][$m->meta_key] = $m->meta_value;
+        }
+
+        $rows = [];
+        foreach ($ids as $id) {
+            if (!isset($posts[$id])) continue;
+            $rows[] = [
+                'id'      => $id,
+                'name'    => (string) $posts[$id]->post_title,
+                'excerpt' => (string) $posts[$id]->post_excerpt,
+                'sku'     => (string) ($meta[$id]['_sku'] ?? ''),
+                'price'   => $meta[$id]['_price'] ?? '',
+                'stock'   => (string) ($meta[$id]['_stock_status'] ?? 'instock'),
+                'thumb'   => (int) ($meta[$id]['_thumbnail_id'] ?? 0),
+                'url'     => get_permalink($id),
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * Product-variant (zelfde uitvoer als wc_product_to_variant) uit een rij van light_products().
+     */
+    public static function light_row_to_variant(array $row, string $group_id, $group_term): array {
+        $image = $row['thumb'] ? wp_get_attachment_image_url($row['thumb'], 'medium') : '';
+
+        $variant = [
+            '@type'       => 'Product',
+            'name'        => $row['name'],
+            'description' => wp_strip_all_tags($row['excerpt'] ?: $row['name']),
+            'sku'         => $row['sku'] ?: 'product-' . $row['id'],
+            'url'         => $row['url'],
+        ];
+        if ($image) $variant['image'] = $image;
+
+        $variant['isVariantOf'] = [
+            '@type'          => 'ProductGroup',
+            '@id'            => $group_id,
+            'name'           => $group_term->name,
+            'productGroupID' => $group_term->slug,
+        ];
+
+        if ($row['price'] !== '' && $row['price'] !== null) {
+            $currency = function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'EUR';
+            $variant['offers'] = [
+                '@type'           => 'Offer',
+                'url'             => $row['url'],
+                'priceCurrency'   => $currency,
+                'price'           => number_format((float) $row['price'], 2, '.', ''),
+                'availability'    => $row['stock'] !== 'outofstock'
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+                'priceValidUntil' => date('Y-12-31', strtotime('+2 years')),
+            ];
+        }
+
+        return $variant;
     }
 
     /**
