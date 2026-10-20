@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.5
+Stable tag: 1.9.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,15 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.6 =
+* Nieuw: Structured Data — placeholder `{{term_image}}` voor de afbeelding van een categorie. Volgorde: WooCommerce-thumbnail van de categorie; ontbreekt die of is het een logo, dan de afbeelding van de grootste subcategorie, daarna het eerste product. Logo's worden herkend via het RankRepair-logo, het Yoast-bedrijfslogo, het thema-logo, de site-icon en een bestandsnaam met "logo". Het resultaat wordt per categorie bewaard en bij wijzigingen vernieuwd.
+* Nieuw: Structured Data — placeholders die leeg uitkomen laten de hele key weg uit de JSON-LD (geen `"image": ""` meer). Ook een leeg ImageObject-omhulsel en lege lijsten verdwijnen. Templates zonder lege placeholder blijven ongewijzigd.
+* Nieuw: Structured Data — placeholder `{{org_logo}}`. De voorbeeldtemplates hebben bij Organization alleen het logo; de ProductGroup (L2/L3) en de blogcategorie-CollectionPage gebruiken `{{term_image}}`.
+* Wijziging: de automatisch opgebouwde Organization toont de vaste bedrijfsafbeelding (`rr_sd_org_image`) niet meer op categoriepagina's, alleen het logo. Terug te zetten met het filter `rr_sd_org_image_on_term_pages`.
+* Nieuw: Structured Data — waarschuwing in de inspector als een template die voor meerdere pagina's geldt (categorie, product, pagina, bericht, "alle pagina's") een vaste afbeelding bevat.
+* Nieuw: optionele instelling "Yoast social image voor categorieën" (standaard uit). Categorieën zonder eigen social image in Yoast krijgen de categorieafbeelding als og:image; een in Yoast ingestelde afbeelding wordt nooit overschreven.
+* Fix: Structured Data — categoriepagina's met veel producten konden het PHP-geheugen overschrijden zodra een eigen JSON was opgeslagen. Placeholders worden nu alleen gebouwd als de template ze gebruikt, en hasVariant gebruikt een lichte productquery zonder volledige postmeta. Bij categorieën met meer dan 50 producten kan bij gelijke menu_order één product van plek wisselen in hasVariant.
 
 = 1.9.5 =
 * Fix: Malware-scan — WebP/AVIF-beeldconversieregels (ShortPixel e.d.) in .htaccess worden niet meer als `cloaked_redirect` gemeld. Een regel met een User-Agent/Accept-conditie die alleen foto.jpg naar foto.jpg.webp/.avif herschrijft is geen cloaking. Echte cloaking (redirect, extern doel, R/P-flag, ander doel dan een beeld) blijft kritiek. Alle UA/referer-gebonden regels worden nu beoordeeld, niet alleen de eerste.
