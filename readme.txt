@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.8
+Stable tag: 1.9.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,10 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.9 =
+* Nieuw: optionele instelling "Yoast schema-afbeelding gelijk aan de social image" (standaard uit). Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat de instelling aan, dan krijgt de hoofdafbeelding in het Yoast-schema van categorieën dezelfde afbeelding als de og:image: de social image uit Yoast als die is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Een graaf zonder hoofdafbeelding blijft ongewijzigd en het logo wordt niet aangepast.
+* Nieuw: de inspector van Structured Data meldt wanneer dezelfde WooCommerce-categorieafbeelding op meerdere categorieën staat, met links naar de categorieën. Het is alleen een melding, er wordt niets aangepast.
 
 = 1.9.8 =
 * Fix: Structured Data — automatisch opgebouwde schema's (Organization, WebSite, BreadcrumbList, Product, ProductGroup, FAQPage) laten lege waarden voortaan weg. Voorheen gaf de ProductGroup van een categorie zonder beschrijving `"description": ""`. Waarden als 0, "0" en false blijven staan. Een eigen JSON-LD wordt niet aangepast.
