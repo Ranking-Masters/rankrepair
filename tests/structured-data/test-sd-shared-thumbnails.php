@@ -63,6 +63,9 @@ ok(count($r) === 1 && $r[0]['thumb'] === 7404, 'rapport vindt de gedeelde afbeel
 ok(RR_SD_Term_Image::shared_thumbnails_report('post_tag') === [], 'onbekende taxonomie (geen WooCommerce) geeft een leeg rapport');
 $GLOBALS['t']['terms'] = [];
 ok(count(RR_SD_Term_Image::shared_thumbnails_report('product_cat')) === 1, 'tweede aanroep komt uit de cache (zelfde versie)');
+$ids = RR_SD_Term_Image::shared_term_ids('product_cat');
+ok(isset($ids[362]) && isset($ids[290]) && !isset($ids[722]) && count($ids) === 2, 'shared_term_ids geeft alleen de categorieën met een gedeelde foto');
+ok(RR_SD_Term_Image::shared_term_ids('post_tag') === [], 'shared_term_ids zonder WooCommerce is leeg');
 
 // ── Weergave in de inspector ──
 set_error_handler(function ($no, $str, $file, $line) { throw new ErrorException($str, 0, $no, $file, $line); });

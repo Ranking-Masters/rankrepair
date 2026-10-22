@@ -193,6 +193,28 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                     'description' => __('Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat deze optie aan, dan gebruikt het schema dezelfde afbeelding als de social image: die uit Yoast als hij is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Vereist Yoast SEO.', 'rankrepair'),
                 ],
                 [
+                    'name'        => 'rr_sd_term_image_skip_shared',
+                    'label'       => __('Gedeelde categoriefoto negeren bij {{term_image}}', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — de categorieafbeelding wordt altijd gebruikt', 'rankrepair'),
+                        '1' => __('Aan — staat dezelfde afbeelding op meerdere categorieën, dan wordt hij overgeslagen', 'rankrepair'),
+                    ],
+                    'description' => __('Dezelfde foto op twee categorieën (bijvoorbeeld Bedbanken en Opklapbed) zegt niets over elk van beide. Staat dit aan, dan valt {{term_image}} voor zulke categorieën terug op de afbeelding van de grootste subcategorie of het eerste product. De foto in WooCommerce blijft ongemoeid.', 'rankrepair'),
+                ],
+                [
+                    'name'        => 'rr_sd_template_fallback_l1',
+                    'label'       => __('L1-template als terugval voor L2 en L3', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — een leeg L2- of L3-template betekent geen eigen JSON-LD', 'rankrepair'),
+                        '1' => __('Aan — is het L2- of L3-template leeg, dan wordt het L1-template gebruikt', 'rankrepair'),
+                    ],
+                    'description' => __('Handig als alle niveaus hetzelfde blok nodig hebben (bijvoorbeeld een CollectionPage met {{term_image}}) en je niet drie keer hetzelfde wilt invullen. Een ingevuld L2- of L3-template gaat altijd voor.', 'rankrepair'),
+                ],
+                [
                     'name'        => 'rr_sd_only_custom',
                     'label'       => __('Modus', 'rankrepair'),
                     'type'        => 'select',
@@ -236,11 +258,16 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         // ── Eerst custom JSON-LD parsen zodat we weten welke types al gedekt zijn ──
         $tpl = class_exists('RR_SD_Template') ? new RR_SD_Template() : null;
 
-        $type_opt = 'rr_sd_custom_jsonld_' . $context['type'];
-        $raw      = get_option($type_opt, '');
-        // Backward-compat: als depth-specifieke leeg is, val terug op generieke product_cat
-        if (trim($raw) === '' && strpos($context['type'], 'product_cat_') === 0) {
-            $raw = get_option('rr_sd_custom_jsonld_product_cat', '');
+        // Eerst de template van dit type; leeg → de oude generieke product_cat-template; en met de
+        // instelling "L1-template als terugval" ook de L1-template voor L2 en L3.
+        $raw = '';
+        $l1_fallback = get_option('rr_sd_template_fallback_l1', '0') === '1';
+        $options = class_exists('RR_SD_Template')
+            ? RR_SD_Template::template_option_chain($context['type'], $l1_fallback)
+            : ['rr_sd_custom_jsonld_' . $context['type']];
+        foreach ($options as $option_name) {
+            $raw = get_option($option_name, '');
+            if (trim($raw) !== '') break;
         }
         if ($tpl && trim($raw) !== '') $raw = $tpl->apply($raw, $context);
         $custom = $this->parse_custom_jsonld($raw);

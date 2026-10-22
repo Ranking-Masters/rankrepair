@@ -32,6 +32,9 @@ interface RR_SD_Term_Image_Source {
 
     /** Is deze afbeelding een logo (en dus niet geschikt als categorieafbeelding)? */
     public function is_logo(string $url): bool;
+
+    /** Staat de categorieafbeelding van deze term ook op minstens één andere term? */
+    public function is_shared_thumbnail(int $term_id): bool;
 }
 
 class RR_SD_Term_Image {
@@ -42,10 +45,12 @@ class RR_SD_Term_Image {
 
     private $source;
     private $use_yoast;
+    private $skip_shared;
 
-    public function __construct(RR_SD_Term_Image_Source $source, bool $use_yoast = false) {
-        $this->source    = $source;
-        $this->use_yoast = $use_yoast;
+    public function __construct(RR_SD_Term_Image_Source $source, bool $use_yoast = false, bool $skip_shared = false) {
+        $this->source      = $source;
+        $this->use_yoast   = $use_yoast;
+        $this->skip_shared = $skip_shared;
     }
 
     public function resolve(int $term_id): string {
@@ -63,6 +68,11 @@ class RR_SD_Term_Image {
             if ($url !== '' && !$this->source->is_logo($url)) {
                 return $url;
             }
+        }
+        // Dezelfde foto op meerdere categorieën zegt niets over déze categorie: dan door naar de
+        // volgende stap (subcategorie, product), als de instelling dat vraagt.
+        if ($this->skip_shared && $this->source->is_shared_thumbnail($term_id)) {
+            return '';
         }
         $url = trim($this->source->thumbnail_url($term_id));
         if ($url !== '' && !$this->source->is_logo($url)) {
@@ -118,8 +128,11 @@ class RR_SD_Term_Image {
             return '';
         }
 
-        $cache = (bool) apply_filters('rr_sd_term_image_cache', true);
-        $key   = 'rr_sd_ti_' . self::version() . '_' . (int) $term->term_id;
+        $cache       = (bool) apply_filters('rr_sd_term_image_cache', true);
+        $use_yoast   = (bool) apply_filters('rr_sd_term_image_use_yoast', false);
+        $skip_shared = get_option('rr_sd_term_image_skip_shared', '0') === '1';
+        // De sleutel bevat de instellingen die het resultaat bepalen, zodat een wissel meteen telt.
+        $key   = 'rr_sd_ti_' . self::version() . '_' . ($use_yoast ? 'y' : 'n') . ($skip_shared ? 's' : 'n') . '_' . (int) $term->term_id;
         if ($cache) {
             $hit = get_transient($key);
             if (is_array($hit) && isset($hit['u'])) {
@@ -127,8 +140,7 @@ class RR_SD_Term_Image {
             }
         }
 
-        $use_yoast = (bool) apply_filters('rr_sd_term_image_use_yoast', false);
-        $resolver  = new self(new RR_SD_Term_Image_WP_Source((string) $term->taxonomy), $use_yoast);
+        $resolver  = new self(new RR_SD_Term_Image_WP_Source((string) $term->taxonomy), $use_yoast, $skip_shared);
         $url       = (string) apply_filters('rr_sd_term_image', $resolver->resolve((int) $term->term_id), $term);
 
         if ($cache) {
@@ -256,6 +268,22 @@ class RR_SD_Term_Image {
         return $groups;
     }
 
+    /**
+     * ID's van alle termen waarvan de categorieafbeelding ook op een andere term staat.
+     * (Een ouder en kind met dezelfde foto tellen ook mee; beide vallen dan terug op de keten.)
+     *
+     * @return array<int,int>
+     */
+    public static function shared_term_ids(string $taxonomy = 'product_cat'): array {
+        $ids = [];
+        foreach (self::shared_thumbnails_report($taxonomy) as $group) {
+            foreach (array_keys($group['terms']) as $term_id) {
+                $ids[(int) $term_id] = (int) $term_id;
+            }
+        }
+        return $ids;
+    }
+
     // ── Yoast schema-afbeelding gelijktrekken (opt-in) ───────────────────
 
     /**
@@ -361,7 +389,7 @@ class RR_SD_Term_Image {
         add_action('save_post', [__CLASS__, 'on_save_post'], 10, 2);
         add_filter('wpseo_add_opengraph_images', [__CLASS__, 'yoast_add_social_image']);
         add_filter('wpseo_schema_graph', [__CLASS__, 'yoast_schema_graph'], 20, 2);
-        foreach (['rr_sd_org_logo', 'wpseo_titles', 'wpseo_taxonomy_meta', 'site_icon'] as $option) {
+        foreach (['rr_sd_org_logo', 'wpseo_titles', 'wpseo_taxonomy_meta', 'site_icon', 'rr_sd_term_image_skip_shared'] as $option) {
             add_action('update_option_' . $option, [__CLASS__, 'bump_version']);
         }
     }
@@ -386,6 +414,15 @@ class RR_SD_Term_Image_WP_Source implements RR_SD_Term_Image_Source {
         $all = get_option('wpseo_taxonomy_meta', []);
         $url = $all[$this->taxonomy][$term_id]['wpseo_opengraph-image'] ?? '';
         return is_string($url) ? trim($url) : '';
+    }
+
+    private $shared_ids = null;
+
+    public function is_shared_thumbnail(int $term_id): bool {
+        if ($this->shared_ids === null) {
+            $this->shared_ids = RR_SD_Term_Image::shared_term_ids($this->taxonomy);
+        }
+        return isset($this->shared_ids[$term_id]);
     }
 
     public function thumbnail_url(int $term_id): string {

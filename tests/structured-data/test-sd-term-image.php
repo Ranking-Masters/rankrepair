@@ -25,15 +25,16 @@ function ok($cond, $msg) {
 
 /** Nepbron: alles wat de keuzelogica nodig heeft, als arrays. */
 class Fake_Source implements RR_SD_Term_Image_Source {
-    public $yoast = [], $thumb = [], $children = [], $products = [];
+    public $yoast = [], $thumb = [], $children = [], $products = [], $shared = [];
     public function yoast_image(int $id): string   { return $this->yoast[$id] ?? ''; }
     public function thumbnail_url(int $id): string { return $this->thumb[$id] ?? ''; }
     public function child_ids_by_size(int $id): array { return $this->children[$id] ?? []; }
     public function product_image_urls(int $id, int $limit): array { return array_slice($this->products[$id] ?? [], 0, $limit); }
     public function is_logo(string $url): bool { return strpos($url, 'logo') !== false; }
+    public function is_shared_thumbnail(int $id): bool { return in_array($id, $this->shared, true); }
 }
-function resolve(Fake_Source $s, int $term, bool $yoast = false): string {
-    return (new RR_SD_Term_Image($s, $yoast))->resolve($term);
+function resolve(Fake_Source $s, int $term, bool $yoast = false, bool $skip_shared = false): string {
+    return (new RR_SD_Term_Image($s, $yoast, $skip_shared))->resolve($term);
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +91,35 @@ ok(resolve($s, 1, false) === 'wc.jpg', 'Yoast-afbeelding wordt standaard NIET ge
 ok(resolve($s, 1, true) === 'yoast.jpg', 'met Yoast aan gaat de social image voor');
 $s->yoast[1] = 'yoast-logo.png';
 ok(resolve($s, 1, true) === 'wc.jpg', 'Yoast-afbeelding die een logo is wordt overgeslagen');
+
+// ---------------------------------------------------------------------------
+// Gedeelde categoriefoto overslaan (instelling)
+// ---------------------------------------------------------------------------
+$s = new Fake_Source();
+$s->thumb[1] = 'gedeeld.jpg'; $s->shared = [1];
+$s->children[1] = [2]; $s->thumb[2] = 'subcategorie.jpg';
+ok(resolve($s, 1, false, false) === 'gedeeld.jpg', 'instelling uit: de gedeelde categoriefoto wordt gewoon gebruikt');
+ok(resolve($s, 1, false, true) === 'subcategorie.jpg', 'instelling aan: gedeelde foto overgeslagen → foto van de subcategorie');
+
+$s = new Fake_Source();
+$s->thumb[1] = 'gedeeld.jpg'; $s->shared = [1]; $s->products[1] = ['product-a.jpg'];
+ok(resolve($s, 1, false, true) === 'product-a.jpg', 'instelling aan, geen subcategorie: terugval op het eerste product');
+
+$s = new Fake_Source();
+$s->thumb[1] = 'uniek.jpg'; $s->shared = [99]; $s->children[1] = [2]; $s->thumb[2] = 'sub.jpg';
+ok(resolve($s, 1, false, true) === 'uniek.jpg', 'instelling aan, eigen foto niet gedeeld: blijft gebruikt');
+
+$s = new Fake_Source();
+$s->thumb[1] = ''; $s->children[1] = [2, 3]; $s->thumb[2] = 'gedeeld-kind.jpg'; $s->thumb[3] = 'eigen-kind.jpg'; $s->shared = [2];
+ok(resolve($s, 1, false, true) === 'eigen-kind.jpg', 'instelling aan: ook een gedeelde foto bij een subcategorie wordt overgeslagen');
+
+$s = new Fake_Source();
+$s->thumb[1] = 'gedeeld.jpg'; $s->shared = [1];
+ok(resolve($s, 1, false, true) === '', 'instelling aan, niets anders beschikbaar: lege string, geen gedeelde foto');
+
+$s = new Fake_Source();
+$s->thumb[1] = 'wc.jpg'; $s->yoast[1] = 'yoast.jpg'; $s->shared = [1];
+ok(resolve($s, 1, true, true) === 'yoast.jpg', 'de social image uit Yoast blijft gelden, ook als de WooCommerce-foto gedeeld is');
 
 // ---------------------------------------------------------------------------
 // Bestandsnaam normaliseren (logo-herkenning)

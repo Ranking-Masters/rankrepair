@@ -52,6 +52,24 @@ class RR_SD_Template {
     }
 
     /**
+     * Welke opgeslagen templates komen in aanmerking voor een pagina-type, in volgorde van voorrang:
+     * de template van het type zelf; bij productcategorieën daarna de oude generieke template
+     * (rr_sd_custom_jsonld_product_cat); en, alleen met $l1_fallback, voor L2 en L3 de L1-template.
+     *
+     * @return array<int,string> optie-namen
+     */
+    public static function template_option_chain(string $type, bool $l1_fallback = false): array {
+        $chain = ['rr_sd_custom_jsonld_' . $type];
+        if (strpos($type, 'product_cat_') === 0) {
+            $chain[] = 'rr_sd_custom_jsonld_product_cat';
+            if ($l1_fallback && ($type === 'product_cat_l2' || $type === 'product_cat_l3')) {
+                $chain[] = 'rr_sd_custom_jsonld_product_cat_l1';
+            }
+        }
+        return $chain;
+    }
+
+    /**
      * Pagina-typen waarvan één template voor meerdere pagina's geldt. Een vaste afbeelding
      * daarin geeft al die pagina's dezelfde afbeelding. Home, contact en de blogindex zijn
      * enkele pagina's: daar is een vaste afbeelding prima.
