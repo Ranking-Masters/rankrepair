@@ -11,6 +11,32 @@ if (!defined('ABSPATH')) {
 class RR_SD_Builder {
 
     /**
+     * Haalt lege waarden uit een automatisch opgebouwde schema-node: lege tekst, null en lege
+     * lijsten/objecten (op elk niveau). Een lege waarde is nutteloos of ongeldig in schema.org
+     * ("description": "" bij een categorie zonder beschrijving). 0, "0" en false blijven staan.
+     * Lijsten blijven lijsten (opnieuw genummerd). Alleen voor wat RankRepair zelf bouwt; een
+     * eigen JSON van de gebruiker wordt niet aangepast.
+     */
+    public static function drop_empty_values(array $node): array {
+        $is_list = $node === [] || array_keys($node) === range(0, count($node) - 1);
+        $out     = [];
+        foreach ($node as $key => $value) {
+            if (is_array($value)) {
+                $value = self::drop_empty_values($value);
+                if ($value === []) continue;
+            } elseif ($value === null || (is_string($value) && trim($value) === '')) {
+                continue;
+            }
+            if ($is_list) {
+                $out[] = $value;
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Mag de vaste bedrijfsafbeelding (rr_sd_org_image) bij de Organization van deze pagina?
      * Niet op term-pagina's (productcategorieën, blogcategorieën, tags). Aan te passen met
      * het filter rr_sd_org_image_on_term_pages.

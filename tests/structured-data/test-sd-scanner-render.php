@@ -34,7 +34,7 @@ set_error_handler(function ($no, $str, $file, $line) { throw new ErrorException(
 
 $scanner = (new ReflectionClass('RR_SD_Scanner'))->newInstanceWithoutConstructor();
 $method  = new ReflectionMethod('RR_SD_Scanner', 'render_custom_jsonld_box');
-$method->setAccessible(true);
+if (PHP_VERSION_ID < 80100) { $method->setAccessible(true); } // vanaf PHP 8.1 overbodig, vanaf 8.5 verouderd
 
 function render_box($scanner, $method, string $selected, string $value, array $types = null): string {
     ob_start();

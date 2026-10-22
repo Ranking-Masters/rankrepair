@@ -275,12 +275,12 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         // Organization
         if (get_option('rr_sd_schema_organization', '1') === '1' && empty($covered_types['Organization']) && empty($covered_types['LocalBusiness'])) {
             $org = $builder->build_organization($context);
-            if ($org) $graph[] = $org;
+            if ($org) $graph[] = RR_SD_Builder::drop_empty_values($org);
         }
 
         // WebSite + SearchAction — alleen homepage
         if ($context['type'] === 'home' && get_option('rr_sd_schema_website', '1') === '1' && empty($covered_types['WebSite'])) {
-            $graph[] = $builder->build_website();
+            $graph[] = RR_SD_Builder::drop_empty_values($builder->build_website());
         }
 
         // ── Custom JSON-LD invoegen ──
@@ -290,25 +290,25 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         // BreadcrumbList — overal behalve homepage
         if ($context['type'] !== 'home' && get_option('rr_sd_schema_breadcrumb', '1') === '1' && empty($covered_types['BreadcrumbList'])) {
             $bc = $builder->build_breadcrumbs($context);
-            if ($bc) $graph[] = $bc;
+            if ($bc) $graph[] = RR_SD_Builder::drop_empty_values($bc);
         }
 
         // Product — WooCommerce single product
         if ($context['type'] === 'product' && get_option('rr_sd_schema_product', '1') === '1' && empty($covered_types['Product'])) {
             $product = $builder->build_product($context);
-            if ($product) $graph[] = $product;
+            if ($product) $graph[] = RR_SD_Builder::drop_empty_values($product);
         }
 
         // ProductGroup — WC productcategorie (alle dieptes l1/l2/l3)
         if (strpos($context['type'], 'product_cat') === 0 && get_option('rr_sd_schema_productgroup', '1') === '1' && empty($covered_types['ProductGroup']) && empty($covered_types['ItemList'])) {
             $pg = $builder->build_product_group($context);
-            if ($pg) $graph[] = $pg;
+            if ($pg) $graph[] = RR_SD_Builder::drop_empty_values($pg);
         }
 
         // FAQPage — Gutenberg block of ACF repeater
         if (in_array($context['type'], ['post', 'page'], true) && get_option('rr_sd_schema_faqpage', '1') === '1') {
             $faq = $builder->build_faqpage($context);
-            if ($faq) $graph[] = $faq;
+            if ($faq) $graph[] = RR_SD_Builder::drop_empty_values($faq);
         }
 
         /** Zie toelichting bij de filter in de "alleen eigen JSON"-modus hierboven. */
