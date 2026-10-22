@@ -232,12 +232,19 @@ class RR_SD_Scanner {
             <?php endif; ?>
 
             <?php
-            // Controle: dezelfde categorieafbeelding op meerdere categorieën.
-            $shared = class_exists('RR_SD_Term_Image') ? RR_SD_Term_Image::shared_thumbnails_report('product_cat') : [];
+            // Controle: dezelfde categorieafbeelding op meerdere categorieën (zonder ouder-kindparen).
+            // Alleen tonen als de site de WooCommerce-categoriefoto echt gebruikt: via {{term_image}} in een
+            // template, of via de Yoast- of "gedeelde foto negeren"-instelling. Anders heeft het geen gevolgen
+            // en hoeft niemand er iets mee, dus dan staat er niets.
+            $uses_term_image = get_option('rr_sd_yoast_social_image', '0') === '1' || get_option('rr_sd_term_image_skip_shared', '0') === '1';
+            foreach ($audit_templates as $audit_tpl) {
+                if (strpos((string) $audit_tpl, '{{term_image}}') !== false) { $uses_term_image = true; break; }
+            }
+            $shared = ($uses_term_image && class_exists('RR_SD_Term_Image')) ? RR_SD_Term_Image::shared_thumbnails_report('product_cat') : [];
             if ($shared): ?>
-            <div class="notice notice-info inline rr-sd-shared">
-                <p><strong><?php _e('Dezelfde categorieafbeelding op meerdere categorieën', 'rankrepair'); ?></strong><br>
-                <?php _e('Zulke categorieën krijgen in het schema en als social image dezelfde foto. Kies per categorie een eigen, passende afbeelding in WooCommerce.', 'rankrepair'); ?></p>
+            <div class="notice notice-warning inline rr-sd-shared">
+                <p><strong><?php echo esc_html(sprintf(_n('%d groep categorieën heeft dezelfde afbeelding in WooCommerce', '%d groepen categorieën hebben dezelfde afbeelding in WooCommerce', count($shared), 'rankrepair'), count($shared))); ?></strong><br>
+                <?php _e('Deze site gebruikt de categorieafbeelding via {{term_image}} of een Yoast-instelling, dus categorieën met dezelfde foto krijgen dezelfde foto in het schema en als social image. Kies per categorie een eigen afbeelding in WooCommerce, of zet "Gedeelde categoriefoto negeren" aan. Een ouder met dezelfde foto als zijn subcategorie wordt hier niet getoond.', 'rankrepair'); ?></p>
                 <ul style="margin:0 0 .5em 1.2em;list-style:disc">
                 <?php foreach (array_slice($shared, 0, 10) as $group): ?>
                     <li><?php echo esc_html(sprintf(__('Afbeelding %d staat op:', 'rankrepair'), $group['thumb'])); ?>

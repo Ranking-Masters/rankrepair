@@ -209,11 +209,14 @@ class RR_SD_Term_Image {
     // ── Controle: dezelfde categorieafbeelding op meerdere categorieën ───
 
     /**
-     * Groepeert termen die dezelfde afbeelding (bijlage-ID) als categorieafbeelding hebben.
-     * Dezelfde foto op twee categorieën (Bedbanken en Opklapbed) is zelden bedoeld.
+     * Groepeert termen die dezelfde afbeelding (bijlage-ID) als categorieafbeelding hebben, en
+     * laat alleen groepen over waarin minstens twee termen **geen ouder en kind** van elkaar zijn.
+     * Een ouder die de foto van zijn subcategorie krijgt (een gangbare, bewuste keuze) is geen
+     * dubbele foto; twee categorieën zonder verband met dezelfde foto wel.
      *
-     * @param array<int,array{name:string,thumb:int}> $terms term_id => ['name' =>, 'thumb' =>]
-     * @return array<int,array{thumb:int,terms:array<int,string>}> alleen groepen van 2 of meer, grootste eerst
+     * @param array<int,array{name:string,thumb:int,parent?:int}> $terms term_id => ['name' =>, 'thumb' =>, 'parent' =>]
+     *        Alle termen meegeven (ook zonder foto): de afstamming loopt via tussenliggende termen.
+     * @return array<int,array{thumb:int,terms:array<int,string>}> groepen van 2 of meer, grootste eerst
      */
     public static function find_shared_thumbnails(array $terms): array {
         $by = [];
@@ -226,7 +229,20 @@ class RR_SD_Term_Image {
         }
         $groups = [];
         foreach ($by as $thumb => $list) {
-            if (count($list) >= 2) {
+            if (count($list) < 2) {
+                continue;
+            }
+            $ids = array_keys($list);
+            $unrelated = false;
+            for ($i = 0; $i < count($ids) && !$unrelated; $i++) {
+                for ($j = $i + 1; $j < count($ids); $j++) {
+                    if (!self::is_ancestor($terms, $ids[$i], $ids[$j]) && !self::is_ancestor($terms, $ids[$j], $ids[$i])) {
+                        $unrelated = true;
+                        break;
+                    }
+                }
+            }
+            if ($unrelated) {
                 $groups[] = ['thumb' => (int) $thumb, 'terms' => $list];
             }
         }
@@ -234,6 +250,24 @@ class RR_SD_Term_Image {
             return count($b['terms']) <=> count($a['terms']) ?: $a['thumb'] <=> $b['thumb'];
         });
         return $groups;
+    }
+
+    /** Is $ancestor een (directe of verdere) ouder van $descendant? Beveiligd tegen lussen. */
+    private static function is_ancestor(array $terms, int $ancestor, int $descendant): bool {
+        $seen = [];
+        $cur  = $descendant;
+        while (isset($terms[$cur]) && !isset($seen[$cur])) {
+            $seen[$cur] = true;
+            $parent = (int) ($terms[$cur]['parent'] ?? 0);
+            if ($parent <= 0) {
+                return false;
+            }
+            if ($parent === $ancestor) {
+                return true;
+            }
+            $cur = $parent;
+        }
+        return false;
     }
 
     /**
@@ -247,7 +281,7 @@ class RR_SD_Term_Image {
             return [];
         }
         $cache = (bool) apply_filters('rr_sd_term_image_cache', true);
-        $key   = 'rr_sd_shared_' . $taxonomy . '_' . self::version();
+        $key   = 'rr_sd_shared2_' . $taxonomy . '_' . self::version();
         if ($cache) {
             $hit = get_transient($key);
             if (is_array($hit)) {
@@ -258,7 +292,7 @@ class RR_SD_Term_Image {
         $map   = [];
         if (!is_wp_error($terms) && is_array($terms)) {
             foreach ($terms as $t) {
-                $map[(int) $t->term_id] = ['name' => (string) $t->name, 'thumb' => (int) get_term_meta($t->term_id, 'thumbnail_id', true)];
+                $map[(int) $t->term_id] = ['name' => (string) $t->name, 'thumb' => (int) get_term_meta($t->term_id, 'thumbnail_id', true), 'parent' => isset($t->parent) ? (int) $t->parent : 0];
             }
         }
         $groups = self::find_shared_thumbnails($map);

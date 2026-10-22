@@ -16,6 +16,8 @@ function _e($t, $d = null) { echo $t; }
 function esc_html($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
 function esc_attr($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
 function esc_url($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
+function _n($single, $plural, $n, $d = null) { return $n === 1 ? $single : $plural; }
+function esc_html__($t, $d = null) { return esc_html($t); }
 function esc_textarea($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
 function admin_url($p = '') { return 'https://example.test/wp-admin/' . $p; }
 function wp_nonce_field($a = -1) { echo '<input type="hidden" name="_wpnonce" value="x">'; }
@@ -54,6 +56,46 @@ ok(RR_SD_Term_Image::find_shared_thumbnails([1 => ['name' => 'A', 'thumb' => 5]]
 ok(RR_SD_Term_Image::find_shared_thumbnails([]) === [], 'lege invoer geeft geen groepen');
 ok(RR_SD_Term_Image::find_shared_thumbnails([1 => [], 2 => ['thumb' => '7'], 3 => ['thumb' => 7, 'name' => 'C']]) !== null, 'onvolledige gegevens geven geen fout');
 
+// ── Ouder en kind met dezelfde foto zijn geen dubbele foto ──
+$p = [
+    10 => ['name' => 'Kraftpapier', 'thumb' => 500, 'parent' => 0],
+    11 => ['name' => 'Rollen kraftpapier', 'thumb' => 500, 'parent' => 10],
+];
+ok(RR_SD_Term_Image::find_shared_thumbnails($p) === [], 'ouder en kind met dezelfde foto: geen groep');
+
+$p = [
+    10 => ['name' => 'Tape', 'thumb' => 600, 'parent' => 0],
+    11 => ['name' => 'Verpakkingstape', 'thumb' => 0, 'parent' => 10],
+    12 => ['name' => 'PP tape', 'thumb' => 600, 'parent' => 11],
+];
+ok(RR_SD_Term_Image::find_shared_thumbnails($p) === [], 'opa en kleinkind (met een term ertussen) met dezelfde foto: geen groep');
+
+$p = [
+    10 => ['name' => 'Tape', 'thumb' => 700, 'parent' => 0],
+    11 => ['name' => 'Etiketten', 'thumb' => 700, 'parent' => 0],
+];
+$g = RR_SD_Term_Image::find_shared_thumbnails($p);
+ok(count($g) === 1 && count($g[0]['terms']) === 2, 'twee hoofdcategorieën zonder verband met dezelfde foto: wel een groep');
+
+$p = [
+    10 => ['name' => 'Kraftpapier', 'thumb' => 800, 'parent' => 0],
+    11 => ['name' => 'Rollen kraftpapier', 'thumb' => 800, 'parent' => 10],
+    12 => ['name' => 'Etiketten', 'thumb' => 800, 'parent' => 0],
+];
+$g = RR_SD_Term_Image::find_shared_thumbnails($p);
+ok(count($g) === 1 && count($g[0]['terms']) === 3, 'ouder, kind en een losse categorie met dezelfde foto: wel een groep, alle drie genoemd');
+
+$p = [
+    10 => ['name' => 'Bedkast verticaal', 'thumb' => 900, 'parent' => 1],
+    11 => ['name' => 'Verticaal opklapbed', 'thumb' => 900, 'parent' => 2],
+    1  => ['name' => 'Bedkasten', 'thumb' => 0, 'parent' => 0],
+    2  => ['name' => 'Opklapbed', 'thumb' => 0, 'parent' => 0],
+];
+ok(count(RR_SD_Term_Image::find_shared_thumbnails($p)) === 1, 'twee subcategorieën onder verschillende hoofdcategorieën met dezelfde foto: wel een groep');
+
+$lus = [1 => ['name' => 'A', 'thumb' => 5, 'parent' => 2], 2 => ['name' => 'B', 'thumb' => 5, 'parent' => 1]];
+ok(is_array(RR_SD_Term_Image::find_shared_thumbnails($lus)), 'een lus in de ouder-verwijzingen geeft geen oneindige lus');
+
 // ── WordPress-laag: rapport ──
 function term($id, $name) { return (object) ['term_id' => $id, 'name' => $name]; }
 $GLOBALS['t']['terms'] = [term(362, 'Bedbanken'), term(290, 'Opklapbed'), term(722, 'Stoffen')];
@@ -78,16 +120,32 @@ function render_box($scanner, $method): string {
     finally { $html = ob_get_clean(); }
     return $html;
 }
-$GLOBALS['t']['transients'] = []; $GLOBALS['t']['opts'] = [];
-$GLOBALS['t']['terms'] = [term(362, 'Bedbanken'), term(290, 'Opklapbed')]; $GLOBALS['t']['meta'] = [362 => 7404, 290 => 7404];
-try { $html = render_box($scanner, $method); $err = ''; } catch (Throwable $e) { $html = ''; $err = $e->getMessage(); }
-ok($err === '' && strpos($html, 'rr-sd-shared') !== false, 'inspector toont de melding bij een gedeelde afbeelding' . ($err ? " ($err)" : ''));
-ok(strpos($html, 'Bedbanken') !== false && strpos($html, 'Opklapbed') !== false && strpos($html, 'Afbeelding 7404') !== false, 'melding noemt de categorieën en de afbeelding');
-ok(strpos($html, 'term.php?tag_ID=362') !== false, 'categorienamen linken naar het bewerkscherm');
+// Relevantie: de melding staat er alleen als de site de categoriefoto echt gebruikt.
+function fresh_terms() { $GLOBALS['t']['transients'] = []; $GLOBALS['t']['terms'] = [term(362, 'Bedbanken'), term(290, 'Opklapbed')]; $GLOBALS['t']['meta'] = [362 => 7404, 290 => 7404]; }
+function shown($scanner, $method, array $opts) {
+    fresh_terms(); $GLOBALS['t']['opts'] = $opts;
+    try { return [render_box($scanner, $method), '']; } catch (Throwable $e) { return ['', $e->getMessage()]; }
+}
 
-$GLOBALS['t']['transients'] = []; $GLOBALS['t']['terms'] = [term(362, 'Bedbanken'), term(290, 'Opklapbed')]; $GLOBALS['t']['meta'] = [362 => 7404, 290 => 7405];
+[$html, $err] = shown($scanner, $method, []);
+ok($err === '' && strpos($html, 'rr-sd-shared') === false && strpos($html, 'rr-sd-custom-form') !== false, 'categoriefoto niet in gebruik: geen melding, scherm rendert gewoon' . ($err ? " ($err)" : ''));
+ok(strpos($html, 'ter info') === false, 'geen "ter info"-melding: als er niets mee hoeft, staat er niets');
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_yoast_social_image' => '1']);
+ok($err === '' && strpos($html, 'rr-sd-shared') !== false && strpos($html, 'dezelfde foto in het schema en als social image') !== false, 'Yoast-instelling aan: melding met uitleg dat het gevolgen heeft' . ($err ? " ($err)" : ''));
+ok(strpos($html, 'Bedbanken') !== false && strpos($html, 'Opklapbed') !== false && strpos($html, 'Afbeelding 7404') !== false && strpos($html, 'term.php?tag_ID=362') !== false, 'melding noemt de categorieën, de afbeelding en linkt naar het bewerkscherm');
+ok(strpos($html, '1 groep categorieën heeft') !== false, 'samenvatting noemt het aantal groepen (enkelvoud)');
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_custom_jsonld_product_cat_l1' => '{"image":"{{term_image}}"}']);
+ok($err === '' && strpos($html, 'rr-sd-shared') !== false, '{{term_image}} in een template: melding aanwezig' . ($err ? " ($err)" : ''));
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_term_image_skip_shared' => '1']);
+ok($err === '' && strpos($html, 'rr-sd-shared') !== false, '"gedeelde foto negeren" aan: melding aanwezig' . ($err ? " ($err)" : ''));
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_yoast_social_image' => '1']);
+$GLOBALS['t']['meta'] = [362 => 7404, 290 => 7405]; $GLOBALS['t']['transients'] = [];
 try { $html = render_box($scanner, $method); $err = ''; } catch (Throwable $e) { $html = ''; $err = $e->getMessage(); }
-ok($err === '' && strpos($html, 'rr-sd-shared') === false && strpos($html, 'rr-sd-custom-form') !== false, 'geen gedeelde afbeeldingen → geen melding, scherm rendert gewoon' . ($err ? " ($err)" : ''));
+ok($err === '' && strpos($html, 'rr-sd-shared') === false, 'categoriefoto in gebruik maar niets gedeeld: geen melding' . ($err ? " ($err)" : ''));
 
 echo $fail ? "$fail FAILED\n" : "ALL PASS\n";
 exit($fail ? 1 : 0);
