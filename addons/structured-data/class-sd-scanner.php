@@ -231,6 +231,28 @@ class RR_SD_Scanner {
             </div>
             <?php endif; ?>
 
+            <?php
+            // Controle: dezelfde categorieafbeelding op meerdere categorieën.
+            $shared = class_exists('RR_SD_Term_Image') ? RR_SD_Term_Image::shared_thumbnails_report('product_cat') : [];
+            if ($shared): ?>
+            <div class="notice notice-info inline rr-sd-shared">
+                <p><strong><?php _e('Dezelfde categorieafbeelding op meerdere categorieën', 'rankrepair'); ?></strong><br>
+                <?php _e('Zulke categorieën krijgen in het schema en als social image dezelfde foto. Kies per categorie een eigen, passende afbeelding in WooCommerce.', 'rankrepair'); ?></p>
+                <ul style="margin:0 0 .5em 1.2em;list-style:disc">
+                <?php foreach (array_slice($shared, 0, 10) as $group): ?>
+                    <li><?php echo esc_html(sprintf(__('Afbeelding %d staat op:', 'rankrepair'), $group['thumb'])); ?>
+                    <?php $links = [];
+                    foreach ($group['terms'] as $term_id => $term_name) {
+                        $edit = function_exists('get_edit_term_link') ? get_edit_term_link($term_id, 'product_cat') : '';
+                        $links[] = $edit ? '<a href="' . esc_url($edit) . '">' . esc_html($term_name) . '</a>' : esc_html($term_name);
+                    }
+                    echo implode(', ', $links); ?></li>
+                <?php endforeach; ?>
+                </ul>
+                <?php if (count($shared) > 10): ?><p><?php echo esc_html(sprintf(__('… en nog %d groepen.', 'rankrepair'), count($shared) - 10)); ?></p><?php endif; ?>
+            </div>
+            <?php endif; ?>
+
             <form method="post" class="rr-sd-custom-form">
                 <?php wp_nonce_field('rr_sd_custom_' . $selected); ?>
                 <p class="rr-sd-custom-hint">

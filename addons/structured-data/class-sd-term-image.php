@@ -194,6 +194,68 @@ class RR_SD_Term_Image {
         return $image_container;
     }
 
+    // ── Controle: dezelfde categorieafbeelding op meerdere categorieën ───
+
+    /**
+     * Groepeert termen die dezelfde afbeelding (bijlage-ID) als categorieafbeelding hebben.
+     * Dezelfde foto op twee categorieën (Bedbanken en Opklapbed) is zelden bedoeld.
+     *
+     * @param array<int,array{name:string,thumb:int}> $terms term_id => ['name' =>, 'thumb' =>]
+     * @return array<int,array{thumb:int,terms:array<int,string>}> alleen groepen van 2 of meer, grootste eerst
+     */
+    public static function find_shared_thumbnails(array $terms): array {
+        $by = [];
+        foreach ($terms as $term_id => $t) {
+            $thumb = (int) ($t['thumb'] ?? 0);
+            if ($thumb <= 0) {
+                continue;
+            }
+            $by[$thumb][(int) $term_id] = (string) ($t['name'] ?? '');
+        }
+        $groups = [];
+        foreach ($by as $thumb => $list) {
+            if (count($list) >= 2) {
+                $groups[] = ['thumb' => (int) $thumb, 'terms' => $list];
+            }
+        }
+        usort($groups, function ($a, $b) {
+            return count($b['terms']) <=> count($a['terms']) ?: $a['thumb'] <=> $b['thumb'];
+        });
+        return $groups;
+    }
+
+    /**
+     * Dezelfde controle op een echte site (bewaard 6 uur; de cache-sleutel bevat het versienummer
+     * dat bij elke wijziging aan termen, producten of logo-instellingen omhooggaat).
+     *
+     * @return array<int,array{thumb:int,terms:array<int,string>}>
+     */
+    public static function shared_thumbnails_report(string $taxonomy = 'product_cat'): array {
+        if (!function_exists('taxonomy_exists') || !taxonomy_exists($taxonomy)) {
+            return [];
+        }
+        $cache = (bool) apply_filters('rr_sd_term_image_cache', true);
+        $key   = 'rr_sd_shared_' . $taxonomy . '_' . self::version();
+        if ($cache) {
+            $hit = get_transient($key);
+            if (is_array($hit)) {
+                return $hit;
+            }
+        }
+        $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false]);
+        $map   = [];
+        if (!is_wp_error($terms) && is_array($terms)) {
+            foreach ($terms as $t) {
+                $map[(int) $t->term_id] = ['name' => (string) $t->name, 'thumb' => (int) get_term_meta($t->term_id, 'thumbnail_id', true)];
+            }
+        }
+        $groups = self::find_shared_thumbnails($map);
+        if ($cache) {
+            set_transient($key, $groups, 6 * HOUR_IN_SECONDS);
+        }
+        return $groups;
+    }
+
     // ── Yoast schema-afbeelding gelijktrekken (opt-in) ───────────────────
 
     /**
