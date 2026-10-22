@@ -194,12 +194,111 @@ class RR_SD_Term_Image {
         return $image_container;
     }
 
+    // ── Yoast schema-afbeelding gelijktrekken (opt-in) ───────────────────
+
+    /**
+     * Welke afbeelding hoort als schema-afbeelding bij een term? Dezelfde als de og:image:
+     * de social image uit Yoast als die is ingesteld, anders (alleen als het vullen van lege
+     * social images aan staat) de categorieafbeelding. Anders '' = niets aanpassen.
+     */
+    public static function schema_target_image(bool $fill_enabled, string $own_field, string $resolved): string {
+        if (trim($own_field) !== '') {
+            return trim($own_field);
+        }
+        return $fill_enabled ? trim($resolved) : '';
+    }
+
+    /**
+     * Zet de hoofdafbeelding (ImageObject met "#primaryimage") in een Yoast-schemagraaf op $url.
+     * Yoast kiest zelf een afbeelding (op een categorie meestal de eerste productfoto) en die
+     * wijkt vaak af van de og:image. Breedte, hoogte en bijschrift van de oude afbeelding worden
+     * vervangen door die in $info, of weggelaten: een verkeerde maat is erger dan geen maat.
+     * Een graaf zonder hoofdafbeelding blijft ongewijzigd (er wordt niets bijgemaakt).
+     *
+     * @param array<int,mixed>   $graph
+     * @param array<string,mixed> $info  Optioneel: width, height, caption
+     */
+    public static function align_primary_image(array $graph, string $url, array $info = []): array {
+        if (trim($url) === '') {
+            return $graph;
+        }
+        $changed = false;
+        foreach ($graph as $i => $piece) {
+            if (!is_array($piece)) {
+                continue;
+            }
+            $is_image = ($piece['@type'] ?? null) === 'ImageObject' && strpos((string) ($piece['@id'] ?? ''), '#primaryimage') !== false;
+            if ($is_image) {
+                $piece['url']        = $url;
+                $piece['contentUrl'] = $url;
+                unset($piece['width'], $piece['height'], $piece['caption']);
+                foreach (['width', 'height', 'caption'] as $key) {
+                    if (isset($info[$key]) && $info[$key] !== '' && $info[$key] !== null) {
+                        $piece[$key] = $info[$key];
+                    }
+                }
+                $graph[$i] = $piece;
+                $changed   = true;
+            }
+        }
+        if (!$changed) {
+            return $graph;
+        }
+        foreach ($graph as $i => $piece) {
+            if (is_array($piece) && ($piece['@type'] ?? null) !== 'ImageObject' && !empty($piece['thumbnailUrl'])) {
+                $graph[$i]['thumbnailUrl'] = $url;
+            }
+        }
+        return $graph;
+    }
+
+    /**
+     * Yoast-filter wpseo_schema_graph (opt-in via rr_sd_yoast_schema_image): op categorieën,
+     * tags en andere termen krijgt de hoofdafbeelding in het Yoast-schema dezelfde afbeelding
+     * als de og:image.
+     *
+     * @param array $graph
+     * @return array
+     */
+    public static function yoast_schema_graph($graph, $context = null) {
+        if (!is_array($graph) || get_option('rr_sd_yoast_schema_image', '0') !== '1') {
+            return $graph;
+        }
+        if (!(is_category() || is_tag() || is_tax())) {
+            return $graph;
+        }
+        $term = get_queried_object();
+        if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) {
+            return $graph;
+        }
+        $own    = (new RR_SD_Term_Image_WP_Source((string) $term->taxonomy))->yoast_image((int) $term->term_id);
+        $fill   = get_option('rr_sd_yoast_social_image', '0') === '1';
+        $target = self::schema_target_image($fill, $own, $fill ? self::for_term($term) : '');
+        if ($target === '') {
+            return $graph;
+        }
+
+        $info = [];
+        $id   = (int) attachment_url_to_postid($target);
+        if ($id > 0) {
+            $alt = trim((string) get_post_meta($id, '_wp_attachment_image_alt', true));
+            $info['caption'] = $alt !== '' ? $alt : trim((string) get_the_title($id));
+            $full = wp_get_attachment_image_src($id, 'full');
+            if (is_array($full) && isset($full[0], $full[1], $full[2]) && $full[0] === $target) {
+                $info['width']  = (int) $full[1];
+                $info['height'] = (int) $full[2];
+            }
+        }
+        return self::align_primary_image($graph, $target, $info);
+    }
+
     public static function register_hooks(): void {
         foreach (['created_term', 'edited_term', 'delete_term', 'deleted_post', 'customize_save_after'] as $hook) {
             add_action($hook, [__CLASS__, 'bump_version']);
         }
         add_action('save_post', [__CLASS__, 'on_save_post'], 10, 2);
         add_filter('wpseo_add_opengraph_images', [__CLASS__, 'yoast_add_social_image']);
+        add_filter('wpseo_schema_graph', [__CLASS__, 'yoast_schema_graph'], 20, 2);
         foreach (['rr_sd_org_logo', 'wpseo_titles', 'wpseo_taxonomy_meta', 'site_icon'] as $option) {
             add_action('update_option_' . $option, [__CLASS__, 'bump_version']);
         }

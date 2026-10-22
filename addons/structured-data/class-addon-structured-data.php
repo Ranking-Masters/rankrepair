@@ -182,6 +182,17 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                     'description' => __('Alleen voor categorieën, tags en andere termen waarvan het social-imageveld in Yoast leeg is. Een afbeelding die in Yoast is ingesteld wordt nooit overschreven. Werkt ook direct voor nieuwe categorieën. Vereist Yoast SEO.', 'rankrepair'),
                 ],
                 [
+                    'name'        => 'rr_sd_yoast_schema_image',
+                    'label'       => __('Yoast schema-afbeelding gelijk aan de social image', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — Yoast kiest de afbeelding in zijn schema zelf', 'rankrepair'),
+                        '1' => __('Aan — de hoofdafbeelding in het Yoast-schema van categorieën wordt gelijk aan de og:image', 'rankrepair'),
+                    ],
+                    'description' => __('Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat deze optie aan, dan gebruikt het schema dezelfde afbeelding als de social image: die uit Yoast als hij is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Vereist Yoast SEO.', 'rankrepair'),
+                ],
+                [
                     'name'        => 'rr_sd_only_custom',
                     'label'       => __('Modus', 'rankrepair'),
                     'type'        => 'select',
