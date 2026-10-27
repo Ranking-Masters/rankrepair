@@ -318,6 +318,42 @@ class RR_SD_Term_Image {
         return $ids;
     }
 
+    // ── Productlijst in het CollectionPage-blok van Yoast (opt-in) ────────
+
+    /** Is de productlijst aan het Yoast-blok toegevoegd tijdens deze aanvraag? */
+    private static $itemlist_done = false;
+
+    public static function itemlist_done(): bool {
+        return self::$itemlist_done;
+    }
+
+    /**
+     * Voegt een ItemList als mainEntity toe aan het eerste CollectionPage-blok in een Yoast-graaf.
+     * Heeft dat blok al een mainEntity, of is er geen CollectionPage, dan blijft alles ongewijzigd
+     * (er wordt niets overschreven of bijgemaakt).
+     *
+     * @param array<int,mixed> $graph
+     * @return array{graph:array<int,mixed>,added:bool}
+     */
+    public static function add_item_list(array $graph, array $item_list): array {
+        foreach ($graph as $i => $piece) {
+            if (!is_array($piece)) {
+                continue;
+            }
+            $type  = $piece['@type'] ?? null;
+            $types = is_array($type) ? $type : [$type];
+            if (!in_array('CollectionPage', $types, true)) {
+                continue;
+            }
+            if (!empty($piece['mainEntity'])) {
+                return ['graph' => $graph, 'added' => false];
+            }
+            $graph[$i]['mainEntity'] = $item_list;
+            return ['graph' => $graph, 'added' => true];
+        }
+        return ['graph' => $graph, 'added' => false];
+    }
+
     // ── Yoast schema-afbeelding gelijktrekken (opt-in) ───────────────────
 
     /**
@@ -385,7 +421,12 @@ class RR_SD_Term_Image {
      * @return array
      */
     public static function yoast_schema_graph($graph, $context = null) {
-        if (!is_array($graph) || get_option('rr_sd_yoast_schema_image', '0') !== '1') {
+        if (!is_array($graph)) {
+            return $graph;
+        }
+        $want_image = get_option('rr_sd_yoast_schema_image', '0') === '1';
+        $want_list  = get_option('rr_sd_yoast_itemlist', '0') === '1';
+        if (!$want_image && !$want_list) {
             return $graph;
         }
         if (!(is_category() || is_tag() || is_tax())) {
@@ -395,6 +436,24 @@ class RR_SD_Term_Image {
         if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) {
             return $graph;
         }
+        if ($want_image) {
+            $graph = self::align_image_for_term($graph, $term);
+        }
+        if ($want_list && $term->taxonomy === 'product_cat' && class_exists('RR_SD_Builder')) {
+            $list = RR_SD_Builder::build_term_item_list($term, 50);
+            if ($list) {
+                $result = self::add_item_list($graph, $list);
+                $graph  = $result['graph'];
+                if ($result['added']) {
+                    self::$itemlist_done = true;
+                }
+            }
+        }
+        return $graph;
+    }
+
+    /** Hoofdafbeelding van het Yoast-schema gelijktrekken met de og:image (zie schema_target_image). */
+    private static function align_image_for_term(array $graph, $term): array {
         $own    = (new RR_SD_Term_Image_WP_Source((string) $term->taxonomy))->yoast_image((int) $term->term_id);
         $fill   = get_option('rr_sd_yoast_social_image', '0') === '1';
         $target = self::schema_target_image($fill, $own, $fill ? self::for_term($term) : '');

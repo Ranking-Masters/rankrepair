@@ -378,6 +378,64 @@ class RR_SD_Builder {
     }
 
     /**
+     * Bouwt een schema.org ItemList uit lijstitems. Een item met 'product' wordt een ListItem met een
+     * Product (naam, url, afbeelding, prijs en voorraad); anders een ListItem met url, naam en afbeelding
+     * (voor subcategorieën). Lege invoer geeft null, zodat er geen lege lijst in het schema komt.
+     *
+     * @param array<int,array{url?:string,name?:string,image?:string,product?:array}> $entries
+     */
+    public static function item_list_from_entries(array $entries): ?array {
+        $elements = [];
+        $position = 0;
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) continue;
+            if (!empty($entry['product']) && is_array($entry['product'])) {
+                $item = ['@type' => 'ListItem', 'position' => ++$position, 'item' => $entry['product']];
+            } elseif (!empty($entry['url'])) {
+                $item = ['@type' => 'ListItem', 'position' => ++$position, 'url' => (string) $entry['url']];
+                if (!empty($entry['name']))  $item['name']  = (string) $entry['name'];
+                if (!empty($entry['image'])) $item['image'] = (string) $entry['image'];
+            } else {
+                continue;
+            }
+            $elements[] = $item;
+        }
+        if (!$elements) return null;
+        return ['@type' => 'ItemList', 'numberOfItems' => count($elements), 'itemListElement' => $elements];
+    }
+
+    /** Product-node voor in een lijst: zoals een variant, maar zonder verwijzing naar een ProductGroup. */
+    public static function product_item_from_row(array $row): array {
+        $product = self::light_row_to_variant($row, '', (object) ['name' => '', 'slug' => '']);
+        unset($product['isVariantOf']);
+        return $product;
+    }
+
+    /**
+     * ItemList voor een categoriepagina: de subcategorieën als de categorie er heeft, anders de
+     * producten (zelfde keuze en zelfde grens van 50 als de ProductGroup).
+     */
+    public static function build_term_item_list($term, int $limit = 50): ?array {
+        if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) return null;
+
+        $children = get_terms(['taxonomy' => $term->taxonomy, 'parent' => $term->term_id, 'hide_empty' => false]);
+        $entries  = [];
+        if (!is_wp_error($children) && !empty($children)) {
+            foreach (array_slice(array_values($children), 0, $limit) as $child) {
+                $thumb = function_exists('get_term_meta') ? (int) get_term_meta($child->term_id, 'thumbnail_id', true) : 0;
+                $img   = $thumb ? wp_get_attachment_image_url($thumb, 'medium') : '';
+                $link  = get_term_link($child);
+                $entries[] = ['url' => is_wp_error($link) ? '' : (string) $link, 'name' => (string) $child->name, 'image' => $img ? (string) $img : ''];
+            }
+            return self::item_list_from_entries($entries);
+        }
+        foreach (self::light_products((string) $term->slug, $limit) as $row) {
+            $entries[] = ['product' => self::product_item_from_row($row)];
+        }
+        return self::item_list_from_entries($entries);
+    }
+
+    /**
      * Lichte productlijst voor hasVariant: alleen de velden die het schema nodig heeft.
      *
      * wc_get_products() laadt per product de volledige postmeta (op sites met veel

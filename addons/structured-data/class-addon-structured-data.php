@@ -193,6 +193,17 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                     'description' => __('Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat deze optie aan, dan gebruikt het schema dezelfde afbeelding als de social image: die uit Yoast als hij is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Vereist Yoast SEO.', 'rankrepair'),
                 ],
                 [
+                    'name'        => 'rr_sd_yoast_itemlist',
+                    'label'       => __('Productlijst in het CollectionPage-blok van Yoast', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — RankRepair geeft zelf een ProductGroup uit op categoriepagina\'s', 'rankrepair'),
+                        '1' => __('Aan — de producten (of subcategorieën) komen als lijst in het CollectionPage-blok van Yoast; RankRepair bouwt dan geen eigen ProductGroup', 'rankrepair'),
+                    ],
+                    'description' => __('Een ProductGroup is bedoeld voor één product in varianten, niet voor een categorie met losse producten. Staat dit aan, dan krijgt het CollectionPage-blok van Yoast een lijst met de producten (met prijs en voorraad) of, bij een categorie met subcategorieën, de subcategorieën, maximaal 50. Er komt geen tweede CollectionPage bij. Heb je zelf een CollectionPage in de L1-, L2- of L3-template staan, haal die dan weg, anders blijven er twee. Werkt alleen met Yoast SEO en WooCommerce. Lukt het niet (Yoast geeft geen CollectionPage), dan blijft de eigen ProductGroup staan.', 'rankrepair'),
+                ],
+                [
                     'name'        => 'rr_sd_term_image_skip_shared',
                     'label'       => __('Gedeelde categoriefoto negeren bij {{term_image}}', 'rankrepair'),
                     'type'        => 'select',
@@ -338,7 +349,7 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         }
 
         // ProductGroup — WC productcategorie (alle dieptes l1/l2/l3)
-        if (strpos($context['type'], 'product_cat') === 0 && get_option('rr_sd_schema_productgroup', '1') === '1' && empty($covered_types['ProductGroup']) && empty($covered_types['ItemList'])) {
+        if (strpos($context['type'], 'product_cat') === 0 && get_option('rr_sd_schema_productgroup', '1') === '1' && empty($covered_types['ProductGroup']) && !(class_exists('RR_SD_Term_Image') && RR_SD_Term_Image::itemlist_done()) && empty($covered_types['ItemList'])) {
             $pg = $builder->build_product_group($context);
             if ($pg) $graph[] = RR_SD_Builder::drop_empty_values($pg);
         }
