@@ -32,9 +32,14 @@ jobs:
             ./ build/rankrepair/
           cd build && zip -r rankrepair.zip rankrepair/
 
+      - name: Release-notities uit de changelog halen
+        run: |
+          awk -v v="${{ steps.version.outputs.VERSION }}" '$0 == "= " v " =" {f=1; next} /^= / {if (f) exit} f' readme.txt > build/notes.md
+
       - name: GitHub Release aanmaken
         uses: softprops/action-gh-release@v2
         with:
           name: "RankRepair v${{ steps.version.outputs.VERSION }}"
+          body_path: build/notes.md
           files: build/rankrepair.zip
           generate_release_notes: true

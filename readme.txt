@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.9
+Stable tag: 1.9.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,12 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.10 =
+* Nieuw: optionele instelling "Productlijst in het CollectionPage-blok van Yoast" (standaard uit). Een ProductGroup is bedoeld voor één product in varianten, niet voor een categorie met losse producten. Staat de instelling aan, dan krijgt het CollectionPage-blok dat Yoast al uitgeeft op een productcategorie een lijst (ItemList) met de subcategorieën, of bij een categorie zonder subcategorieën de producten met prijs en voorraad (maximaal 50). RankRepair bouwt dan geen eigen ProductGroup meer, en er komt geen tweede CollectionPage bij. Werkt alleen met Yoast SEO en WooCommerce. Een ProductGroup in je eigen template blijft staan, en een CollectionPage in je eigen template zorgt voor een dubbele.
+* Nieuw: optionele instelling "Gedeelde categoriefoto negeren bij {{term_image}}" (standaard uit). Staat dezelfde categoriefoto op meerdere categorieën, dan valt {{term_image}} voor die categorieën terug op de grootste subcategorie of het eerste product, zodat niet alle categoriepagina's dezelfde afbeelding in het schema krijgen.
+* Nieuw: optionele instelling "L1-template als terugval voor L2 en L3" (standaard uit). Heeft een categorie van niveau 2 of 3 geen eigen template, dan wordt de L1-template gebruikt in plaats van niets.
+* Wijziging: de melding in de inspector over dezelfde categoriefoto op meerdere categorieën verschijnt alleen nog op sites die {{term_image}} of de Yoast-afbeeldingsinstellingen gebruiken, en toont geen hoofd- en subcategorie-paren meer (daar is dezelfde foto normaal).
 
 = 1.9.9 =
 * Nieuw: optionele instelling "Yoast schema-afbeelding gelijk aan de social image" (standaard uit). Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat de instelling aan, dan krijgt de hoofdafbeelding in het Yoast-schema van categorieën dezelfde afbeelding als de og:image: de social image uit Yoast als die is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Een graaf zonder hoofdafbeelding blijft ongewijzigd en het logo wordt niet aangepast.
