@@ -295,6 +295,24 @@ document.addEventListener('DOMContentLoaded', function() {
         ];
     }
 
+    /**
+     * Lost RankMath-template-variabelen (%title%, %sep%, …) op als RankMath beschikbaar
+     * is; anders de ruwe waarde. Spiegel van de Yoast WPSEO_Replace_Vars-stap.
+     */
+    private function rankmath_resolve($value, $object) {
+        if ($value === '' || $value === null) {
+            return '';
+        }
+        if (class_exists('RankMath\Helper') && method_exists('RankMath\Helper', 'replace_vars')) {
+            try {
+                return \RankMath\Helper::replace_vars($value, $object);
+            } catch (\Throwable $e) {
+                // Val terug op de ruwe waarde.
+            }
+        }
+        return $value;
+    }
+
     public function load_live_items() {
         global $wpdb;
         $table = $wpdb->prefix . 'rr_meta_data';
@@ -318,12 +336,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
         $raw_posts = $wpdb->get_results("
             SELECT p.ID, p.post_title, p.post_type,
-                MAX(CASE WHEN pm.meta_key = '_yoast_wpseo_title'   THEN pm.meta_value END) AS yoast_title,
-                MAX(CASE WHEN pm.meta_key = '_yoast_wpseo_metadesc' THEN pm.meta_value END) AS yoast_desc
+                MAX(CASE WHEN pm.meta_key = '_yoast_wpseo_title'    THEN pm.meta_value END) AS yoast_title,
+                MAX(CASE WHEN pm.meta_key = '_yoast_wpseo_metadesc' THEN pm.meta_value END) AS yoast_desc,
+                MAX(CASE WHEN pm.meta_key = 'rank_math_title'       THEN pm.meta_value END) AS rm_title,
+                MAX(CASE WHEN pm.meta_key = 'rank_math_description' THEN pm.meta_value END) AS rm_desc
             FROM {$wpdb->posts} p
             LEFT JOIN {$wpdb->postmeta} pm
                 ON p.ID = pm.post_id
-                AND pm.meta_key IN ('_yoast_wpseo_title', '_yoast_wpseo_metadesc')
+                AND pm.meta_key IN ('_yoast_wpseo_title', '_yoast_wpseo_metadesc', 'rank_math_title', 'rank_math_description')
             WHERE p.post_status = 'publish'
               AND p.post_type IN ($post_type_in)
             GROUP BY p.ID
@@ -401,6 +421,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     } catch (Exception $e) {}
                 }
+            }
+
+            // RankMath: op RankMath-sites staat de SEO-meta in rank_math_* i.p.v. Yoast
+            // (mirror van de write-kant). Vul aan zolang Yoast niets opleverde.
+            if ((empty($title) || empty($desc)) && defined('RANK_MATH_VERSION')) {
+                if (empty($title) && !empty($raw->rm_title)) $title = $this->rankmath_resolve($raw->rm_title, $wp_post);
+                if (empty($desc)  && !empty($raw->rm_desc))  $desc  = $this->rankmath_resolve($raw->rm_desc,  $wp_post);
             }
 
             // Beschrijving laatste fallback: excerpt
@@ -502,6 +529,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (empty($desc)  && !empty($ms->description)) $desc  = $ms->description;
                         }
                     } catch (Exception $e) {}
+                }
+
+                // RankMath term-meta (mirror van de write-kant).
+                if ((empty($title) || empty($desc)) && defined('RANK_MATH_VERSION')) {
+                    if (empty($title)) {
+                        $rm = get_term_meta($term->term_id, 'rank_math_title', true);
+                        if (!empty($rm)) $title = $this->rankmath_resolve($rm, $term);
+                    }
+                    if (empty($desc)) {
+                        $rm = get_term_meta($term->term_id, 'rank_math_description', true);
+                        if (!empty($rm)) $desc = $this->rankmath_resolve($rm, $term);
+                    }
                 }
 
                 // Description laatste fallback: term description

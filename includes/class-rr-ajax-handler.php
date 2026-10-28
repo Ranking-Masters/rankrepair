@@ -856,6 +856,12 @@ class RR_Ajax_Handler {
                 }
             }
 
+            // RankMath: lees rank_math_* wanneer Yoast leeg is (mirror van de write-kant).
+            if ((empty($title) || empty($desc)) && defined('RANK_MATH_VERSION')) {
+                if (empty($title)) { $rm = get_post_meta($post->ID, 'rank_math_title', true);       if (!empty($rm)) $title = $this->rankmath_resolve($rm, $wp_post); }
+                if (empty($desc))  { $rm = get_post_meta($post->ID, 'rank_math_description', true); if (!empty($rm)) $desc  = $this->rankmath_resolve($rm, $wp_post); }
+            }
+
             // Fallback: als Yoast geen expliciete beschrijving heeft, gebruik wat Yoast zelf zou genereren
             if (empty($desc) && $wp_post) {
                 // Probeer eerst Yoast's eigen meta surface (Yoast v14+)
@@ -1327,6 +1333,23 @@ class RR_Ajax_Handler {
     }
 
     /**
+     * Lost RankMath-template-variabelen op als RankMath beschikbaar is; anders ruwe waarde.
+     */
+    private function rankmath_resolve($value, $object) {
+        if ($value === '' || $value === null) {
+            return '';
+        }
+        if (class_exists('RankMath\Helper') && method_exists('RankMath\Helper', 'replace_vars')) {
+            try {
+                return \RankMath\Helper::replace_vars($value, $object);
+            } catch (\Throwable $e) {
+                // Val terug op de ruwe waarde.
+            }
+        }
+        return $value;
+    }
+
+    /**
      * Bouw meta-array voor een post OF term. Retourneert null als entity niet bestaat.
      */
     private function build_meta(string $type, int $id): ?array {
@@ -1362,6 +1385,11 @@ class RR_Ajax_Handler {
                         if (empty($desc)  && !empty($ms->description)) $desc  = $ms->description;
                     }
                 } catch (Exception $e) {}
+            }
+            // RankMath: lees rank_math_* wanneer Yoast niets opleverde (mirror van de write-kant).
+            if ((empty($title) || empty($desc)) && defined('RANK_MATH_VERSION')) {
+                if (empty($title)) { $rm = get_post_meta($id, 'rank_math_title', true);       if (!empty($rm)) $title = $this->rankmath_resolve($rm, $wp_post); }
+                if (empty($desc))  { $rm = get_post_meta($id, 'rank_math_description', true); if (!empty($rm)) $desc  = $this->rankmath_resolve($rm, $wp_post); }
             }
             if (empty($desc)) {
                 $excerpt = get_the_excerpt($id);
@@ -1418,6 +1446,11 @@ class RR_Ajax_Handler {
                         if (empty($desc)  && !empty($ms->description)) $desc  = $ms->description;
                     }
                 } catch (Exception $e) {}
+            }
+            // RankMath term-meta (mirror van de write-kant).
+            if ((empty($title) || empty($desc)) && defined('RANK_MATH_VERSION')) {
+                if (empty($title)) { $rm = get_term_meta($id, 'rank_math_title', true);       if (!empty($rm)) $title = $this->rankmath_resolve($rm, $term); }
+                if (empty($desc))  { $rm = get_term_meta($id, 'rank_math_description', true); if (!empty($rm)) $desc  = $this->rankmath_resolve($rm, $term); }
             }
             if (empty($desc) && !empty($term->description)) {
                 $desc = wp_strip_all_tags($term->description);
