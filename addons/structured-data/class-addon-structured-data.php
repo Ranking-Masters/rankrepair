@@ -29,6 +29,11 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
             require_once $term_img_file;
             RR_SD_Term_Image::register_hooks();
         }
+        $dedupe_file = __DIR__ . '/class-sd-dedupe.php';
+        if (file_exists($dedupe_file)) {
+            require_once $dedupe_file;
+            RR_SD_Dedupe::register_hooks();
+        }
         if (file_exists($builder_file))  require_once $builder_file;
         if (file_exists($scanner_file))  require_once $scanner_file;
         if (file_exists($template_file)) require_once $template_file;
@@ -193,6 +198,17 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                     'description' => __('Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat deze optie aan, dan gebruikt het schema dezelfde afbeelding als de social image: die uit Yoast als hij is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Vereist Yoast SEO.', 'rankrepair'),
                 ],
                 [
+                    'name'        => 'rr_sd_skip_yoast_duplicates',
+                    'label'       => __('Yoast als basis: dubbele schema\'s weglaten', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — RankRepair voegt zijn eigen Organization, BreadcrumbList en WebSite toe, ook als Yoast ze al uitgeeft', 'rankrepair'),
+                        '1' => __('Aan — Yoast is de basis; RankRepair laat die types weg en vult alleen aan wat Yoast niet heeft', 'rankrepair'),
+                    ],
+                    'description' => __('Yoast geeft op elke pagina Organization en BreadcrumbList uit (op de homepage ook WebSite). Staat dit aan, dan laat RankRepair zijn eigen versie van die types weg, ook als die in een template of in eigen JSON-LD staat, zodat er geen dubbele @id\'s of breadcrumbs meer zijn. Wat Yoast niet heeft (ProductGroup, ItemList, FAQPage, eigen types) blijft staan. Let op: de Organization uit je template valt weg, dus staan daar velden in die Yoast niet heeft (sameAs, beoordeling), zet die dan in Yoast. Een BreadcrumbList van WooCommerce of het thema blijft staan: die moet je daar zelf uitzetten. Vereist Yoast SEO; zonder Yoast doet deze instelling niets.', 'rankrepair'),
+                ],
+                [
                     'name'        => 'rr_sd_yoast_itemlist',
                     'label'       => __('Productlijst in het CollectionPage-blok van Yoast', 'rankrepair'),
                     'type'        => 'select',
@@ -287,6 +303,14 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         if ($tpl && trim($raw_all) !== '') $raw_all = $tpl->apply($raw_all, $context);
         $custom_all = $this->parse_custom_jsonld($raw_all);
 
+        // Yoast als basis: eigen/template-versies van wat Yoast al uitgeeft weglaten
+        $yoast_types = [];
+        if (class_exists('RR_SD_Dedupe') && RR_SD_Dedupe::enabled()) {
+            $yoast_types = RR_SD_Dedupe::yoast_types();
+            $custom      = RR_SD_Dedupe::drop_duplicates($custom, $yoast_types);
+            $custom_all  = RR_SD_Dedupe::drop_duplicates($custom_all, $yoast_types);
+        }
+
         // Verzamel @types die al door de gebruiker zijn ingevoerd → niet auto-bouwen
         $covered_types = [];
         foreach (array_merge($custom, $custom_all) as $item) {
@@ -294,6 +318,11 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                 $t = is_array($item['@type']) ? reset($item['@type']) : $item['@type'];
                 $covered_types[$t] = true;
             }
+        }
+
+        // Wat Yoast al uitgeeft telt ook als gedekt: dan bouwt RankRepair het niet nog een keer
+        foreach ($yoast_types as $t) {
+            $covered_types[$t] = true;
         }
 
         // "Alleen eigen JSON" modus → álle auto-build skippen
