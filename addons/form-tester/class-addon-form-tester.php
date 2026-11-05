@@ -1,7 +1,7 @@
 <?php
 /**
  * Form Tester Add-on
- * Detects CF7 / Gravity Forms / WooCommerce forms and runs e-mail delivery tests.
+ * Detects CF7 / Gravity Forms / JetFormBuilder / WooCommerce forms and runs e-mail delivery tests.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -50,6 +50,34 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
         // doorkomen (plugin haakt op andere filter), interpreteren we "alleen anti-spam"
         // als success voor ÓNZE test.
         add_filter( 'wpcf7_feedback_response', [ $this, 'override_antispam_response' ], 999, 2 );
+
+        // JetFormBuilder: nonce / CSRF / honeypot / captcha hangen als losse request-filters
+        // (priority 10). Ons filter draait eerder (priority 1) en haalt alleen die
+        // spam-handlers weg; veld-validatie en sanitizing blijven gewoon draaien.
+        add_filter( 'jet-form-builder/request-handler/request', [ $this, 'strip_jfb_spam_handlers' ], 1 );
+    }
+
+    /**
+     * Verwijder JetFormBuilder's anti-spam request-handlers (Security\* en Captcha) voor één test-request.
+     * Alleen aangehaakt na een geldige one-time token, zie maybe_disable_antispam_for_test().
+     */
+    public function strip_jfb_spam_handlers( $request ) {
+        global $wp_filter;
+        $tag  = 'jet-form-builder/request-handler/request';
+        $hook = $wp_filter[ $tag ] ?? null;
+        if ( ! $hook instanceof WP_Hook ) return $request;
+
+        foreach ( $hook->callbacks as $priority => $callbacks ) {
+            foreach ( $callbacks as $cb ) {
+                $fn = $cb['function'] ?? null;
+                if ( ! is_array( $fn ) || ! is_object( $fn[0] ) ) continue;
+                $class = get_class( $fn[0] );
+                if ( strpos( $class, 'JFB_Modules\\Security\\' ) === 0 || strpos( $class, 'JFB_Modules\\Captcha\\' ) === 0 ) {
+                    remove_filter( $tag, $fn, $priority );
+                }
+            }
+        }
+        return $request;
     }
 
     /**
@@ -204,6 +232,8 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
                             $cf7 = count( array_filter( $forms, fn( $f ) => $f['plugin'] === 'CF7' ) );
                             $wc  = count( array_filter( $forms, fn( $f ) => $f['plugin'] === 'WC' ) );
                             $gf  = count( array_filter( $forms, fn( $f ) => $f['plugin'] === 'GF' ) );
+                            $jfb = count( array_filter( $forms, fn( $f ) => $f['plugin'] === 'JFB' ) );
+                            if ( $jfb ) echo '<span class="rr-ft-plugin-badge rr-pb-jfb">JFB ' . $jfb . '</span>';
                             if ( $cf7 ) echo '<span class="rr-ft-plugin-badge rr-pb-cf7">CF7 ' . $cf7 . '</span>';
                             if ( $wc )  echo '<span class="rr-ft-plugin-badge rr-pb-wc">WC ' . $wc . '</span>';
                             if ( $gf )  echo '<span class="rr-ft-plugin-badge rr-pb-gf">GF ' . $gf . '</span>';
@@ -303,7 +333,7 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
     public function render_detail( array $form ): void {
         $test_data   = $this->generate_test_data( $form );
         $result      = $form['last_result'] ?? null;
-        $plugin_full = [ 'CF7' => 'Contact Form 7', 'GF' => 'Gravity Forms', 'WC' => 'WooCommerce' ][ $form['plugin'] ] ?? $form['plugin'];
+        $plugin_full = [ 'CF7' => 'Contact Form 7', 'GF' => 'Gravity Forms', 'JFB' => 'JetFormBuilder', 'WC' => 'WooCommerce' ][ $form['plugin'] ] ?? $form['plugin'];
         ?>
         <div class="rr-ft-detail-inner" data-form-id="<?php echo esc_attr( $form['id'] ); ?>">
 
@@ -501,6 +531,24 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
                     'url'         => '',
                     'fields'      => count( $gf['fields'] ?? [] ),
                     'last_result' => $this->get_last_result( 'gf_' . $gf['id'] ),
+                ];
+            }
+        }
+
+        // JetFormBuilder
+        if ( $this->jfb_available() ) {
+            $jfb_posts = get_posts( [ 'post_type' => 'jet-form-builder', 'numberposts' => -1, 'post_status' => 'publish' ] );
+            foreach ( $jfb_posts as $post ) {
+                $page   = $this->find_jfb_page( $post->ID );
+                $fields = $this->collect_jfb_fields( $post );
+                $forms[] = [
+                    'id'          => 'jfb_' . $post->ID,
+                    'plugin_id'   => $post->ID,
+                    'plugin'      => 'JFB',
+                    'name'        => $post->post_title ?: 'Formulier #' . $post->ID,
+                    'url'         => $page ? get_permalink( $page ) : '',
+                    'fields'      => count( $fields ),
+                    'last_result' => $this->get_last_result( 'jfb_' . $post->ID ),
                 ];
             }
         }
@@ -762,7 +810,7 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
             'ok'      => $has_akismet || $has_captcha,
             'warning' => ! $has_akismet && ! $has_captcha,
             'label'   => 'Spam-beveiliging actief',
-            'detail'  => $has_akismet ? 'Akismet actief' : ( $has_captcha ? 'reCAPTCHA gedetecteerd' : 'Geen spam-beveiliging gevonden' ),
+            'detail'  => $has_akismet ? 'Akismet actief' : ( $has_captcha ? 'Captcha/honeypot/CSRF gedetecteerd' : 'Geen spam-beveiliging gevonden' ),
         ];
 
         // 7. Responstijd
@@ -818,11 +866,12 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
         return match ( $form['plugin'] ) {
             'CF7' => $this->submit_cf7( $form, $empty_mode, $test_email ),
             'GF'  => $this->submit_gf( $form, $empty_mode, $test_email ),
+            'JFB' => $this->submit_jfb( $form, $empty_mode, $test_email ),
             default => [
                 'success'            => false,
                 'validation_blocked' => false,
                 'unsupported'        => true,
-                'detail'             => 'Live submit niet ondersteund voor ' . $form['plugin'] . ' (alleen CF7 + Gravity Forms in v1)',
+                'detail'             => 'Live submit niet ondersteund voor ' . $form['plugin'] . ' (alleen CF7, Gravity Forms en JetFormBuilder)',
             ],
         };
     }
@@ -1035,6 +1084,275 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
         ];
     }
 
+    // -------------------------------------------------------------------------
+    // JetFormBuilder
+    // -------------------------------------------------------------------------
+
+    private function jfb_available(): bool {
+        return post_type_exists( 'jet-form-builder' ) || function_exists( 'jet_form_builder' );
+    }
+
+    /**
+     * Zoek een gepubliceerde pagina waarop dit JFB-formulier staat:
+     * Gutenberg-blok, [jet_fb_form]-shortcode of Elementor-widget.
+     */
+    private function find_jfb_page( int $form_id ): ?int {
+        global $wpdb;
+        $id = (int) $form_id;
+
+        $post_id = $wpdb->get_var( $wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_status = 'publish' AND post_type NOT IN ('jet-form-builder','revision')
+               AND ( post_content REGEXP %s OR post_content REGEXP %s )
+             LIMIT 1",
+            'jet-forms/form-block[^>]*"form_id":"?' . $id . '"?[,}]',
+            '\\[jet_fb_form[^\\]]*form_id=["\']?' . $id . '["\' \\]]'
+        ) );
+        if ( $post_id ) return (int) $post_id;
+
+        // Elementor-widget (data staat als JSON in postmeta)
+        $post_id = $wpdb->get_var( $wpdb->prepare(
+            "SELECT p.ID FROM {$wpdb->postmeta} m
+             JOIN {$wpdb->posts} p ON p.ID = m.post_id AND p.post_status = 'publish'
+             WHERE m.meta_key = '_elementor_data' AND m.meta_value LIKE %s
+               AND ( m.meta_value LIKE %s OR m.meta_value LIKE %s )
+             LIMIT 1",
+            '%jet-form-builder-form%',
+            '%"form_id":"' . $id . '"%',
+            '%"form_id":' . $id . ',%'
+        ) );
+        return $post_id ? (int) $post_id : null;
+    }
+
+    /**
+     * Lees de invulbare velden van een JFB-formulier uit de blokken in post_content.
+     * Conditionele blokken worden overgeslagen (veld is niet altijd zichtbaar).
+     *
+     * @return array<int,array{name:string,type:string,required:bool,attrs:array,block:array}>
+     */
+    private function collect_jfb_fields( \WP_Post $post ): array {
+        $skip = [
+            'submit-field', 'form-break-field', 'form-break-start', 'group-break-field', 'heading-field',
+            'action-button', 'progress-bar', 'conditional-block', 'captcha-container', 'hidden-field',
+            'calculated-field', 'repeater-field', 'media-field',
+        ];
+        $out = [];
+        $walk = function ( array $blocks ) use ( &$walk, &$out, $skip ) {
+            foreach ( $blocks as $b ) {
+                $name = (string) ( $b['blockName'] ?? '' );
+                if ( strpos( $name, 'jet-forms/' ) !== 0 ) {
+                    if ( ! empty( $b['innerBlocks'] ) ) $walk( $b['innerBlocks'] );
+                    continue;
+                }
+                $type = substr( $name, 10 );
+                if ( in_array( $type, $skip, true ) ) continue;
+                $attrs = (array) ( $b['attrs'] ?? [] );
+                if ( ! empty( $attrs['name'] ) && is_string( $attrs['name'] ) ) {
+                    $out[] = [
+                        'name'     => $attrs['name'],
+                        'type'     => $type,
+                        'required' => ! empty( $attrs['required'] ),
+                        'attrs'    => $attrs,
+                        'block'    => $b,
+                    ];
+                }
+                if ( ! empty( $b['innerBlocks'] ) ) $walk( $b['innerBlocks'] );
+            }
+        };
+        $walk( parse_blocks( (string) $post->post_content ) );
+        return $out;
+    }
+
+    /**
+     * Eerste keuzewaarde van een select/radio/checkbox-veld (statische opties of choices-blok).
+     */
+    private function jfb_first_choice( array $field ): ?string {
+        $opts = $field['attrs']['field_options'] ?? [];
+        if ( is_array( $opts ) ) {
+            foreach ( $opts as $o ) {
+                $v = is_array( $o ) ? ( $o['value'] ?? $o['label'] ?? '' ) : $o;
+                if ( (string) $v !== '' ) return (string) $v;
+            }
+        }
+        foreach ( (array) ( $field['block']['innerBlocks'] ?? [] ) as $inner ) {
+            $v = $inner['attrs']['value'] ?? $inner['attrs']['label'] ?? '';
+            if ( (string) $v !== '' ) return (string) $v;
+        }
+        return null;
+    }
+
+    /**
+     * Voorbeeldwaarde per JFB-veldtype. null = veld niet automatisch invulbaar.
+     *
+     * @return string|array|null
+     */
+    private function sample_value_for_jfb_field( array $field, string $test_email ) {
+        $attrs = $field['attrs'];
+        switch ( $field['type'] ) {
+            case 'text-field':
+                $ft = $attrs['field_type'] ?? 'text';
+                if ( $ft === 'email' )    return $test_email;
+                if ( $ft === 'url' )      return home_url( '/' );
+                if ( $ft === 'tel' )      return '0612345678';
+                if ( $ft === 'password' ) return 'RankRepair-Test-1!';
+                if ( stripos( $field['name'], 'mail' ) !== false )  return $test_email;
+                if ( preg_match( '/phone|tel/i', $field['name'] ) ) return '0612345678';
+                return 'RankRepair Test';
+            case 'textarea-field':
+            case 'wysiwyg-field':
+                return 'RankRepair automatische test — ' . current_time( 'mysql' );
+            case 'phone-field':
+                return '0612345678';
+            case 'number-field':
+            case 'range-field':
+                $min = isset( $attrs['min'] ) && is_numeric( $attrs['min'] ) ? $attrs['min'] : 1;
+                return (string) $min;
+            case 'date-field':
+                return gmdate( 'Y-m-d' );
+            case 'time-field':
+                return '12:00';
+            case 'datetime-field':
+                return gmdate( 'Y-m-d\TH:i' );
+            case 'color-picker-field':
+                return '#336699';
+            case 'select-field':
+            case 'radio-field':
+                return $this->jfb_first_choice( $field );
+            case 'checkbox-field':
+                $first = $this->jfb_first_choice( $field );
+                return $first === null ? null : [ $first ];
+            case 'choices-field':
+                $first = $this->jfb_first_choice( $field );
+                return ! empty( $field['attrs']['multiple'] ) && $first !== null ? [ $first ] : $first;
+        }
+        return 'RankRepair Test';
+    }
+
+    /**
+     * Submit een JetFormBuilder-formulier met een echte HTTP POST naar de eigen router:
+     * /?jet_form_builder_submit=submit&method=ajax (dezelfde route als de frontend-JS).
+     */
+    private function submit_jfb( array $form, bool $empty_mode, string $test_email ): array {
+        $post = get_post( (int) $form['plugin_id'] );
+        if ( ! $post ) {
+            return [ 'success' => false, 'validation_blocked' => false, 'detail' => 'JetFormBuilder-formulier niet gevonden' ];
+        }
+
+        $fields   = $this->collect_jfb_fields( $post );
+        $required = array_filter( $fields, fn( $f ) => $f['required'] );
+
+        if ( $empty_mode && ! $required ) {
+            return [
+                'success'            => false,
+                'validation_blocked' => false,
+                'unsupported'        => true,
+                'detail'             => 'Formulier heeft geen verplichte velden — validatietest niet van toepassing',
+            ];
+        }
+
+        $refer = $form['url'] ?: home_url( '/' );
+        $body  = [
+            '_jet_engine_booking_form_id' => (string) $form['plugin_id'],
+            '_jet_engine_refer'           => $refer,
+            '__queried_post_id'           => (string) url_to_postid( $refer ),
+        ];
+
+        $unfillable = [];
+        foreach ( $fields as $f ) {
+            if ( $empty_mode && $f['required'] ) {
+                $body[ $f['name'] ] = '';
+                continue;
+            }
+            $value = $this->sample_value_for_jfb_field( $f, $test_email );
+            if ( $value === null ) {
+                if ( $f['required'] ) $unfillable[] = $f['name'];
+                continue;
+            }
+            $body[ $f['name'] ] = $value;
+        }
+
+        if ( ! $empty_mode && $unfillable ) {
+            return [
+                'success'            => false,
+                'validation_blocked' => false,
+                'unsupported'        => true,
+                'detail'             => 'Verplicht veld niet automatisch in te vullen (' . implode( ', ', array_slice( $unfillable, 0, 5 ) ) . ') — test handmatig.',
+            ];
+        }
+
+        $token = wp_generate_password( 32, false );
+        set_transient( 'rr_ft_token_' . hash( 'sha256', $token ), 1, 60 );
+
+        $boundary = wp_generate_password( 24, false );
+        $response = wp_remote_post( add_query_arg( [ 'jet_form_builder_submit' => 'submit', 'method' => 'ajax' ], home_url( '/' ) ), [
+            'timeout' => 20,
+            'body'    => $this->build_multipart_body( $body, $boundary ),
+            'headers' => [
+                'Content-Type'          => 'multipart/form-data; boundary=' . $boundary,
+                'X-Requested-With'      => 'XMLHttpRequest',
+                'X-RankRepair-Internal' => '1',
+                'X-RankRepair-Test'     => $token,
+            ],
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            return [ 'success' => false, 'validation_blocked' => false, 'detail' => 'HTTP-fout: ' . $response->get_error_message() ];
+        }
+
+        $code   = wp_remote_retrieve_response_code( $response );
+        $data   = json_decode( wp_remote_retrieve_body( $response ), true );
+        $status = is_array( $data ) ? (string) ( $data['status'] ?? '' ) : '';
+
+        if ( ! is_array( $data ) ) {
+            return [
+                'success'            => false,
+                'validation_blocked' => false,
+                'detail'             => 'Geen JSON-antwoord van JetFormBuilder (HTTP ' . $code . ') — mogelijk blokkeert een firewall/cache de POST.',
+            ];
+        }
+
+        $errors = $data['errors'] ?? $data['fields'] ?? [];
+        $count  = is_array( $errors ) ? count( $errors ) : 0;
+
+        if ( $empty_mode ) {
+            $blocked = ( $status === 'validation_failed' );
+            return [
+                'success'            => false,
+                'validation_blocked' => $blocked,
+                'detail'             => $blocked
+                    ? ( $count ? sprintf( 'Validatie werkt — %d veld%s afgewezen', $count, $count === 1 ? '' : 'en' ) : 'Validatie werkt — inzending afgewezen' )
+                    : 'Lege required fields werden NIET afgewezen (status: ' . ( $status ?: 'HTTP ' . $code ) . ')',
+            ];
+        }
+
+        if ( $status === 'success' ) {
+            return [
+                'success'            => true,
+                'validation_blocked' => false,
+                'detail'             => 'Formulier accepteerde sample-data (anti-spam: nonce/honeypot/captcha overgeslagen voor test)',
+            ];
+        }
+
+        $msg = isset( $data['message'] ) ? wp_strip_all_tags( (string) $data['message'] ) : '';
+        if ( preg_match( '/captcha|spam|nonce|csrf|honeypot/i', $status . ' ' . $msg ) ) {
+            return [
+                'success'            => false,
+                'validation_blocked' => false,
+                'unsupported'        => true,
+                'detail'             => 'Niet automatisch testbaar — anti-spam blokkeert de test (' . ( $status ?: $msg ) . '). Test handmatig.',
+            ];
+        }
+
+        $field_names = is_array( $errors ) ? implode( ', ', array_slice( array_map( 'strval', array_keys( $errors ) ), 0, 5 ) ) : '';
+        return [
+            'success'            => false,
+            'validation_blocked' => false,
+            'detail'             => 'Submit faalde — status: ' . ( $status ?: 'HTTP ' . $code )
+                . ( $msg ? ' · ' . $msg : '' )
+                . ( $field_names ? ' · velden: ' . $field_names : '' ),
+        ];
+    }
+
     /**
      * Bouw een multipart/form-data body uit een associative array.
      * CF7's REST endpoint accepteert alleen multipart, geen x-www-form-urlencoded.
@@ -1099,12 +1417,24 @@ class RR_Addon_Form_Tester extends RR_Addon_Base {
         return match( $form['plugin'] ) {
             'CF7' => function_exists( 'wpcf7' ) || post_type_exists( 'wpcf7_contact_form' ),
             'GF'  => class_exists( 'GFAPI' ),
+            'JFB' => $this->jfb_available(),
             'WC'  => class_exists( 'WooCommerce' ),
             default => false,
         };
     }
 
     private function form_has_captcha( array $form ): bool {
+        if ( $form['plugin'] === 'JFB' ) {
+            $post = get_post( (int) $form['plugin_id'] );
+            if ( ! $post ) return false;
+            if ( stripos( $post->post_content, 'captcha' ) !== false ) return true;
+            $args = json_decode( (string) get_post_meta( $post->ID, '_jf_args', true ), true );
+            if ( is_array( $args ) && ( ! empty( $args['use_honeypot'] ) || ! empty( $args['use_csrf'] ) || ( $args['load_nonce'] ?? '' ) === 'render' ) ) return true;
+            foreach ( array_keys( (array) get_post_meta( $post->ID ) ) as $key ) {
+                if ( stripos( (string) $key, 'captcha' ) !== false ) return true;
+            }
+            return false;
+        }
         if ( $form['plugin'] !== 'CF7' ) return false;
         if ( ! class_exists( 'WPCF7_ContactForm' ) ) return false;
         $cf7  = WPCF7_ContactForm::get_instance( (int) $form['plugin_id'] );
