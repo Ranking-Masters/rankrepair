@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.10
+Stable tag: 1.9.11
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,10 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.11 =
+* Nieuw: Formulieren Tester ondersteunt JetFormBuilder. De formulieren worden gevonden met hun velden en de pagina waarop ze staan, en de test doet een live inzending met voorbeelddata plus een inzending met lege verplichte velden. Nonce, CSRF, honeypot en captcha van JetFormBuilder worden alleen voor het test-request uitgezet (met een eenmalige token); de veldvalidatie blijft actief. Let op: een test verstuurt de mails en acties die in het formulier staan, naar de ontvanger die daar is ingesteld.
+* Nieuw: optionele instelling "Yoast als basis: dubbele schema's weglaten" (standaard uit). Staat die aan, dan laat RankRepair zijn eigen Organization, BreadcrumbList en WebSite weg als Yoast ze al uitgeeft, zodat er geen dubbele @id's of breadcrumbs meer zijn. Vereist Yoast SEO.
 
 = 1.9.10 =
 * Nieuw: optionele instelling "Productlijst in het CollectionPage-blok van Yoast" (standaard uit). Een ProductGroup is bedoeld voor één product in varianten, niet voor een categorie met losse producten. Staat de instelling aan, dan krijgt het CollectionPage-blok dat Yoast al uitgeeft op een productcategorie een lijst (ItemList) met de subcategorieën, of bij een categorie zonder subcategorieën de producten met prijs en voorraad (maximaal 50). RankRepair bouwt dan geen eigen ProductGroup meer, en er komt geen tweede CollectionPage bij. Werkt alleen met Yoast SEO en WooCommerce. Een ProductGroup in je eigen template blijft staan, en een CollectionPage in je eigen template zorgt voor een dubbele.
