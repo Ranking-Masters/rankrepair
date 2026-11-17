@@ -206,7 +206,7 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                         '0' => __('Uit — RankRepair voegt zijn eigen Organization, BreadcrumbList en WebSite toe, ook als Yoast ze al uitgeeft', 'rankrepair'),
                         '1' => __('Aan — Yoast is de basis; RankRepair laat die types weg en vult alleen aan wat Yoast niet heeft', 'rankrepair'),
                     ],
-                    'description' => __('Yoast geeft op elke pagina Organization en BreadcrumbList uit (op de homepage ook WebSite). Staat dit aan, dan laat RankRepair zijn eigen versie van die types weg, ook als die in een template of in eigen JSON-LD staat, zodat er geen dubbele @id\'s of breadcrumbs meer zijn. Wat Yoast niet heeft (ProductGroup, ItemList, FAQPage, eigen types) blijft staan. Let op: de Organization uit je template valt weg, dus staan daar velden in die Yoast niet heeft (sameAs, beoordeling), zet die dan in Yoast. Een BreadcrumbList van WooCommerce of het thema blijft staan: die moet je daar zelf uitzetten. Vereist Yoast SEO; zonder Yoast doet deze instelling niets.', 'rankrepair'),
+                    'description' => __('Yoast geeft op elke pagina Organization en BreadcrumbList uit (op de homepage ook WebSite). Staat dit aan, dan laat RankRepair zijn eigen versie van die types weg, ook als die in een template of in eigen JSON-LD staat, zodat er geen dubbele @id\'s of breadcrumbs meer zijn. Wat Yoast niet heeft (ProductGroup, ItemList, FAQPage, eigen types) blijft staan. Let op: de Organization uit je template valt weg, dus staan daar velden in die Yoast niet heeft (sameAs, beoordeling), zet die dan in Yoast. Een losse BreadcrumbList van WooCommerce blijft staan: zet die uit met de instelling "WooCommerce BreadcrumbList uitzetten" hieronder. Een BreadcrumbList van het thema moet je in het thema zelf uitzetten. Vereist Yoast SEO; zonder Yoast doet deze instelling niets.', 'rankrepair'),
                 ],
                 [
                     'name'        => 'rr_sd_yoast_itemlist',
@@ -267,6 +267,21 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                 ],
             ],
         ];
+        // Alleen op sites met WooCommerce: de losse BreadcrumbList van WooCommerce uitzetten.
+        if (class_exists('WooCommerce')) {
+            $last = count($sections) - 1;
+            $sections[$last]['fields'][] = [
+                'name'        => 'rr_sd_disable_wc_breadcrumb',
+                'label'       => __('WooCommerce BreadcrumbList uitzetten', 'rankrepair'),
+                'type'        => 'select',
+                'default'     => '0',
+                'options'     => [
+                    '0' => __('Uit — WooCommerce geeft zijn eigen BreadcrumbList uit (onderaan de pagina)', 'rankrepair'),
+                    '1' => __('Aan — de losse BreadcrumbList van WooCommerce wordt niet meer uitgegeven', 'rankrepair'),
+                ],
+                'description' => __('Haalt de losse BreadcrumbList-JSON-LD van WooCommerce weg, bijvoorbeeld als Yoast er al een uitgeeft. De zichtbare broodkruimel blijft staan. Alleen dit schemablok verdwijnt; de BreadcrumbList van Yoast of van RankRepair blijft zoals die was. Zet dit niet aan als je SEO-plugin geen eigen BreadcrumbList uitgeeft, want dan heeft de pagina er geen meer.', 'rankrepair'),
+            ];
+        }
         return $sections;
     }
 

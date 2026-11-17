@@ -27,7 +27,32 @@ class RR_SD_Dedupe {
         return get_option('rr_sd_skip_yoast_duplicates', '0') === '1';
     }
 
+    /** Optienaam van de schakelaar die de losse BreadcrumbList van WooCommerce uitzet. */
+    const OPTION_WC_BREADCRUMB = 'rr_sd_disable_wc_breadcrumb';
+
+    /**
+     * Staat de schakelaar aan, en is WooCommerce actief? Standaard uit, zodat er bij bestaande
+     * klanten niets verandert na een update.
+     */
+    public static function wc_breadcrumb_disabled(): bool {
+        return get_option(self::OPTION_WC_BREADCRUMB, '0') === '1' && class_exists('WooCommerce');
+    }
+
+    /**
+     * Filter-callback voor `woocommerce_structured_data_breadcrumblist`.
+     * Een leeg array heeft geen @type, dus WC_Structured_Data::set_data() slaat het over en
+     * WooCommerce geeft geen BreadcrumbList uit. De zichtbare broodkruimel blijft ongemoeid:
+     * die komt uit woocommerce_breadcrumb(), niet uit dit filter.
+     *
+     * @param mixed $markup
+     * @return mixed
+     */
+    public static function filter_wc_breadcrumb($markup) {
+        return self::wc_breadcrumb_disabled() ? [] : $markup;
+    }
+
     public static function register_hooks(): void {
+        add_filter('woocommerce_structured_data_breadcrumblist', [__CLASS__, 'filter_wc_breadcrumb'], 10, 1);
         // Alleen meekijken: de graph gaat ongewijzigd door. Laat prioriteit hoog zodat we de
         // eindstand zien, ook na aanpassingen van andere plugins.
         add_filter('wpseo_schema_graph', [__CLASS__, 'record_yoast_graph'], 99, 2);

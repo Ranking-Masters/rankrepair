@@ -91,6 +91,8 @@ class RR_SD_Scanner {
 
                     <?php $this->render_custom_jsonld_box($selected, $custom_value, $types[$selected]['label'] ?? $selected, $types); ?>
 
+                    <?php $this->render_wc_breadcrumb_hint($schemas); ?>
+
                     <?php if (!empty($suggested)): ?>
                     <div class="rr-sd-suggest">
                         <h3><?php _e('Wat RankRepair kan aanvullen', 'rankrepair'); ?></h3>
@@ -116,6 +118,56 @@ class RR_SD_Scanner {
                     <?php endif; ?>
                 </div>
             </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Staan er twee of meer BreadcrumbLists op de pagina, waarvan één van WooCommerce, terwijl de
+     * schakelaar "WooCommerce BreadcrumbList uitzetten" uit staat? Dan is een hint nuttig.
+     *
+     * De BreadcrumbList van WooCommerce herken je aan het ontbreken van een @id op het blok zelf
+     * (Yoast en RankRepair geven er wel een), of aan de bron "WooCommerce" als die is herkend.
+     *
+     * @param array $schemas Uitkomst van scan_url(): lijst van ['data' => node, 'source' => string].
+     */
+    public static function has_wc_breadcrumb_duplicate(array $schemas): bool {
+        if (!class_exists('WooCommerce')) {
+            return false;
+        }
+        if (get_option('rr_sd_disable_wc_breadcrumb', '0') === '1') {
+            return false;
+        }
+        $total = 0;
+        $wc    = false;
+        foreach ($schemas as $schema) {
+            $data = $schema['data'] ?? null;
+            if (!is_array($data) || !isset($data['@type'])) {
+                continue;
+            }
+            $types = is_array($data['@type']) ? $data['@type'] : [$data['@type']];
+            if (!in_array('BreadcrumbList', $types, true)) {
+                continue;
+            }
+            $total++;
+            $source = (string) ($schema['source'] ?? '');
+            if ($source === 'WooCommerce' || (empty($data['@id']) && $source !== 'RankRepair')) {
+                $wc = true;
+            }
+        }
+        return $total >= 2 && $wc;
+    }
+
+    private function render_wc_breadcrumb_hint(array $schemas): void {
+        if (!self::has_wc_breadcrumb_duplicate($schemas)) {
+            return;
+        }
+        ?>
+        <div class="notice notice-warning inline" style="margin:0 0 16px">
+            <p>
+                <?php echo esc_html__('Op deze pagina staan twee BreadcrumbLists, waarvan één van WooCommerce. Zet "WooCommerce BreadcrumbList uitzetten" aan om de losse WooCommerce-versie weg te laten (de zichtbare broodkruimel blijft staan).', 'rankrepair'); ?>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=rankrepair-settings')); ?>"><?php esc_html_e('Naar Instellingen →', 'rankrepair'); ?></a>
+            </p>
         </div>
         <?php
     }

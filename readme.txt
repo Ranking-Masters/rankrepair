@@ -61,6 +61,9 @@ Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen
 
 == Changelog ==
 
+= Nog niet uitgebracht =
+* Nieuw: optionele instelling "WooCommerce BreadcrumbList uitzetten" (standaard uit, alleen zichtbaar met WooCommerce). Haalt de losse BreadcrumbList-JSON-LD van WooCommerce weg, bijvoorbeeld als Yoast er al een uitgeeft; de zichtbare broodkruimel blijft staan. De inspector toont een hint als er twee BreadcrumbLists staan, waarvan één van WooCommerce.
+
 = 1.9.11 =
 * Nieuw: Formulieren Tester ondersteunt JetFormBuilder. De formulieren worden gevonden met hun velden en de pagina waarop ze staan, en de test doet een live inzending met voorbeelddata plus een inzending met lege verplichte velden. Nonce, CSRF, honeypot en captcha van JetFormBuilder worden alleen voor het test-request uitgezet (met een eenmalige token); de veldvalidatie blijft actief. Let op: een test verstuurt de mails en acties die in het formulier staan, naar de ontvanger die daar is ingesteld.
 * Nieuw: optionele instelling "Yoast als basis: dubbele schema's weglaten" (standaard uit). Staat die aan, dan laat RankRepair zijn eigen Organization, BreadcrumbList en WebSite weg als Yoast ze al uitgeeft, zodat er geen dubbele @id's of breadcrumbs meer zijn. Vereist Yoast SEO.
