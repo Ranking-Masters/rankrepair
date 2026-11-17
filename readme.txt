@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.11
+Stable tag: 1.9.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,7 +61,7 @@ Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen
 
 == Changelog ==
 
-= Nog niet uitgebracht =
+= 1.9.12 =
 * Nieuw: optionele instelling "WooCommerce BreadcrumbList uitzetten" (standaard uit, alleen zichtbaar met WooCommerce). Haalt de losse BreadcrumbList-JSON-LD van WooCommerce weg, bijvoorbeeld als Yoast er al een uitgeeft; de zichtbare broodkruimel blijft staan. De inspector toont een hint als er twee BreadcrumbLists staan, waarvan één van WooCommerce.
 
 = 1.9.11 =
