@@ -55,6 +55,10 @@ final class RankRepair {
         require_once RR_PLUGIN_DIR . 'includes/class-rr-wordfence.php';
         require_once RR_PLUGIN_DIR . 'includes/class-rr-malware-scan.php';
         require_once RR_PLUGIN_DIR . 'includes/class-rr-agent.php';
+        require_once RR_PLUGIN_DIR . 'includes/class-rr-php-workers.php';
+
+        // PHP-workers meten voor Level 4 (registreert een shutdown-functie + cron).
+        RR_Php_Workers::boot();
 
         // Eigen (gratis) malware-scan: cron-hook + zelfhelende planning.
         add_action( RR_Malware_Scan::CRON_HOOK, [ 'RR_Malware_Scan', 'run_and_store' ] );
@@ -215,6 +219,8 @@ final class RankRepair {
         RR_Agent::on_deactivate();
         require_once RR_PLUGIN_DIR . 'includes/class-rr-malware-scan.php';
         RR_Malware_Scan::unschedule();
+        require_once RR_PLUGIN_DIR . 'includes/class-rr-php-workers.php';
+        RR_Php_Workers::unschedule();
         flush_rewrite_rules();
     }
 
