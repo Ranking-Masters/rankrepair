@@ -73,6 +73,10 @@ foreach ($options as $option) {
 // Geplande malware-scan opruimen.
 wp_clear_scheduled_hook('rr_malware_scan_event');
 
+// PHP-workers: cron, logmap en opties weg.
+require_once __DIR__ . '/includes/class-rr-php-workers.php';
+RR_Php_Workers::uninstall();
+
 // Drop custom tables
 $tables = [
     $wpdb->prefix . 'rr_pagespeed_results',
