@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.12
+Stable tag: 1.9.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,11 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.13 =
+* Nieuw: PHP-workers meten voor Level 4. Per verzoek wordt start/eindtijd in een afgeschermde map in uploads gelogd (meten kan een verzoek nooit breken); elke 5 minuten stuurt een cron de bezetting per minuut naar Level 4, waar overbelasting zichtbaar wordt en een melding kan volgen. Werkt alleen op sites die aan Level 4 gekoppeld zijn; uit te zetten in het Level 4-agentscherm of met RR_PHP_WORKERS_DISABLE.
+* Malwarescan: WordPress-corebestanden in de webroot worden niet meer op patronen gescand (de checksums dekken ze, wp-config.php wordt wel gescand); uploads van WP-Optimize, Sucuri, Mailchimp for WP en WPForms staan op de allowlist.
+* Interne links: de scanner neemt standaard alleen blogberichten mee (geen pagina's zoals bedankt- en formulierpagina's; aan te passen met de filter rr_internal_links_post_types) en slaat noindex-content (Yoast) over (uit te zetten met rr_internal_links_exclude_noindex).
 
 = 1.9.12 =
 * Nieuw: optionele instelling "WooCommerce BreadcrumbList uitzetten" (standaard uit, alleen zichtbaar met WooCommerce). Haalt de losse BreadcrumbList-JSON-LD van WooCommerce weg, bijvoorbeeld als Yoast er al een uitgeeft; de zichtbare broodkruimel blijft staan. De inspector toont een hint als er twee BreadcrumbLists staan, waarvan één van WooCommerce.
