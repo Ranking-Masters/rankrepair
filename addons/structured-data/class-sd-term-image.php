@@ -1,0 +1,655 @@
+<?php
+/**
+ * Dynamische categorieafbeelding voor de placeholder {{term_image}}.
+ *
+ * Volgorde (eerste bruikbare afbeelding wint, een logo telt nooit als bruikbaar):
+ *   1. de eigen afbeelding van de term (WooCommerce `thumbnail_id`)
+ *   2. de afbeelding van de grootste subcategorie (daarna de volgende, en dieper)
+ *   3. de afbeelding van het eerste product in de categorie (incl. subcategorieën)
+ * Is er niets, dan geeft de placeholder '' terug en laat RR_SD_Template de hele
+ * key uit de JSON-LD weg.
+ *
+ * De keuzelogica (RR_SD_Term_Image) kent geen WordPress en is los te testen; alle
+ * WordPress-aanroepen zitten in RR_SD_Term_Image_WP_Source.
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+interface RR_SD_Term_Image_Source {
+    /** Yoast social image van de term (URL), of ''. */
+    public function yoast_image(int $term_id): string;
+
+    /** Eigen termafbeelding (WooCommerce thumbnail_id) als URL, of ''. */
+    public function thumbnail_url(int $term_id): string;
+
+    /** Directe subcategorieën, grootste (meeste producten) eerst. */
+    public function child_ids_by_size(int $term_id): array;
+
+    /** Maximaal $limit afbeeldings-URL's van de eerste producten in de term (incl. subtermen). */
+    public function product_image_urls(int $term_id, int $limit): array;
+
+    /** Is deze afbeelding een logo (en dus niet geschikt als categorieafbeelding)? */
+    public function is_logo(string $url): bool;
+
+    /** Staat de categorieafbeelding van deze term ook op minstens één andere term? */
+    public function is_shared_thumbnail(int $term_id): bool;
+}
+
+class RR_SD_Term_Image {
+
+    const MAX_DEPTH          = 5;
+    const PRODUCT_CANDIDATES = 5;
+    const CACHE_TTL          = 43200; // 12 uur; wijzigingen resetten de cache eerder via bump_version()
+
+    private $source;
+    private $use_yoast;
+    private $skip_shared;
+
+    public function __construct(RR_SD_Term_Image_Source $source, bool $use_yoast = false, bool $skip_shared = false) {
+        $this->source      = $source;
+        $this->use_yoast   = $use_yoast;
+        $this->skip_shared = $skip_shared;
+    }
+
+    public function resolve(int $term_id): string {
+        $seen = [];
+        $url  = $this->from_term_tree($term_id, 0, $seen);
+        if ($url !== '') {
+            return $url;
+        }
+        return $this->from_products($term_id);
+    }
+
+    private function own_image(int $term_id): string {
+        if ($this->use_yoast) {
+            $url = trim($this->source->yoast_image($term_id));
+            if ($url !== '' && !$this->source->is_logo($url)) {
+                return $url;
+            }
+        }
+        // Dezelfde foto op meerdere categorieën zegt niets over déze categorie: dan door naar de
+        // volgende stap (subcategorie, product), als de instelling dat vraagt.
+        if ($this->skip_shared && $this->source->is_shared_thumbnail($term_id)) {
+            return '';
+        }
+        $url = trim($this->source->thumbnail_url($term_id));
+        if ($url !== '' && !$this->source->is_logo($url)) {
+            return $url;
+        }
+        return '';
+    }
+
+    private function from_term_tree(int $term_id, int $depth, array &$seen): string {
+        if (isset($seen[$term_id])) {
+            return '';
+        }
+        $seen[$term_id] = true;
+
+        $own = $this->own_image($term_id);
+        if ($own !== '') {
+            return $own;
+        }
+        if ($depth >= self::MAX_DEPTH) {
+            return '';
+        }
+        foreach ($this->source->child_ids_by_size($term_id) as $child_id) {
+            $url = $this->from_term_tree((int) $child_id, $depth + 1, $seen);
+            if ($url !== '') {
+                return $url;
+            }
+        }
+        return '';
+    }
+
+    private function from_products(int $term_id): string {
+        foreach ($this->source->product_image_urls($term_id, self::PRODUCT_CANDIDATES) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '' && !$this->source->is_logo($url)) {
+                return $url;
+            }
+        }
+        return '';
+    }
+
+    // ── WordPress-laag ───────────────────────────────────────────────────
+
+    /**
+     * URL van de categorieafbeelding voor een WP_Term, met cache.
+     *
+     * Filters:
+     *  - rr_sd_term_image_use_yoast (bool, standaard false): Yoast social image eerst proberen.
+     *  - rr_sd_term_image_cache     (bool, standaard true)
+     *  - rr_sd_term_image           (string $url, WP_Term $term): eindresultaat bijsturen.
+     */
+    public static function for_term($term): string {
+        if (!is_object($term) || empty($term->term_id)) {
+            return '';
+        }
+
+        $cache       = (bool) apply_filters('rr_sd_term_image_cache', true);
+        $use_yoast   = (bool) apply_filters('rr_sd_term_image_use_yoast', false);
+        $skip_shared = get_option('rr_sd_term_image_skip_shared', '0') === '1';
+        // De sleutel bevat de instellingen die het resultaat bepalen, zodat een wissel meteen telt.
+        $key   = 'rr_sd_ti_' . self::version() . '_' . ($use_yoast ? 'y' : 'n') . ($skip_shared ? 's' : 'n') . '_' . (int) $term->term_id;
+        if ($cache) {
+            $hit = get_transient($key);
+            if (is_array($hit) && isset($hit['u'])) {
+                return (string) $hit['u'];
+            }
+        }
+
+        $resolver  = new self(new RR_SD_Term_Image_WP_Source((string) $term->taxonomy), $use_yoast, $skip_shared);
+        $url       = (string) apply_filters('rr_sd_term_image', $resolver->resolve((int) $term->term_id), $term);
+
+        if ($cache) {
+            set_transient($key, ['u' => $url], self::CACHE_TTL);
+        }
+        return $url;
+    }
+
+    private static function version(): int {
+        return max(1, (int) get_option('rr_sd_ti_ver', 1));
+    }
+
+    /** Maakt alle bewaarde termafbeeldingen ongeldig (de sleutel bevat het versienummer). */
+    public static function bump_version(...$args): void {
+        update_option('rr_sd_ti_ver', self::version() + 1, false);
+    }
+
+    public static function on_save_post($post_id, $post = null): void {
+        if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
+            return;
+        }
+        self::bump_version();
+    }
+
+    // ── Yoast social image (opt-in) ──────────────────────────────────────
+
+    /**
+     * Beslist welke afbeelding als social image (og:image) aan een term wordt toegevoegd.
+     * Alleen als de instelling aan staat én het social-imageveld van de term in Yoast leeg is;
+     * een door de redacteur gekozen afbeelding wordt dus nooit overschreven.
+     */
+    public static function decide_social_image(bool $enabled, string $own_field, string $resolved): string {
+        if (!$enabled || trim($own_field) !== '') {
+            return '';
+        }
+        return trim($resolved);
+    }
+
+    /**
+     * Yoast-hook wpseo_add_opengraph_images: zet de categorieafbeelding bovenaan de og:image-lijst
+     * (het filter wpseo_opengraph_image zelf vervangt alleen een afbeelding die er al is).
+     * Twitter volgt in Yoast de eerste og:image.
+     *
+     * @param object $image_container WPSEO_OpenGraph_Image
+     * @return object
+     */
+    public static function yoast_add_social_image($image_container) {
+        if (get_option('rr_sd_yoast_social_image', '0') !== '1' || !is_object($image_container) || !method_exists($image_container, 'add_image_by_url')) {
+            return $image_container;
+        }
+        if (!(is_category() || is_tag() || is_tax())) {
+            return $image_container;
+        }
+        $term = get_queried_object();
+        if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) {
+            return $image_container;
+        }
+        $own = (new RR_SD_Term_Image_WP_Source((string) $term->taxonomy))->yoast_image((int) $term->term_id);
+        $url = self::decide_social_image(true, $own, self::for_term($term));
+        if ($url !== '') {
+            $image_container->add_image_by_url($url);
+        }
+        return $image_container;
+    }
+
+    // ── Controle: dezelfde categorieafbeelding op meerdere categorieën ───
+
+    /**
+     * Groepeert termen die dezelfde afbeelding (bijlage-ID) als categorieafbeelding hebben, en
+     * laat alleen groepen over waarin minstens twee termen **geen ouder en kind** van elkaar zijn.
+     * Een ouder die de foto van zijn subcategorie krijgt (een gangbare, bewuste keuze) is geen
+     * dubbele foto; twee categorieën zonder verband met dezelfde foto wel.
+     *
+     * @param array<int,array{name:string,thumb:int,parent?:int}> $terms term_id => ['name' =>, 'thumb' =>, 'parent' =>]
+     *        Alle termen meegeven (ook zonder foto): de afstamming loopt via tussenliggende termen.
+     * @return array<int,array{thumb:int,terms:array<int,string>}> groepen van 2 of meer, grootste eerst
+     */
+    public static function find_shared_thumbnails(array $terms): array {
+        $by = [];
+        foreach ($terms as $term_id => $t) {
+            $thumb = (int) ($t['thumb'] ?? 0);
+            if ($thumb <= 0) {
+                continue;
+            }
+            $by[$thumb][(int) $term_id] = (string) ($t['name'] ?? '');
+        }
+        $groups = [];
+        foreach ($by as $thumb => $list) {
+            if (count($list) < 2) {
+                continue;
+            }
+            $ids = array_keys($list);
+            $unrelated = false;
+            for ($i = 0; $i < count($ids) && !$unrelated; $i++) {
+                for ($j = $i + 1; $j < count($ids); $j++) {
+                    if (!self::is_ancestor($terms, $ids[$i], $ids[$j]) && !self::is_ancestor($terms, $ids[$j], $ids[$i])) {
+                        $unrelated = true;
+                        break;
+                    }
+                }
+            }
+            if ($unrelated) {
+                $groups[] = ['thumb' => (int) $thumb, 'terms' => $list];
+            }
+        }
+        usort($groups, function ($a, $b) {
+            return count($b['terms']) <=> count($a['terms']) ?: $a['thumb'] <=> $b['thumb'];
+        });
+        return $groups;
+    }
+
+    /** Is $ancestor een (directe of verdere) ouder van $descendant? Beveiligd tegen lussen. */
+    private static function is_ancestor(array $terms, int $ancestor, int $descendant): bool {
+        $seen = [];
+        $cur  = $descendant;
+        while (isset($terms[$cur]) && !isset($seen[$cur])) {
+            $seen[$cur] = true;
+            $parent = (int) ($terms[$cur]['parent'] ?? 0);
+            if ($parent <= 0) {
+                return false;
+            }
+            if ($parent === $ancestor) {
+                return true;
+            }
+            $cur = $parent;
+        }
+        return false;
+    }
+
+    /**
+     * Dezelfde controle op een echte site (bewaard 6 uur; de cache-sleutel bevat het versienummer
+     * dat bij elke wijziging aan termen, producten of logo-instellingen omhooggaat).
+     *
+     * @return array<int,array{thumb:int,terms:array<int,string>}>
+     */
+    public static function shared_thumbnails_report(string $taxonomy = 'product_cat'): array {
+        if (!function_exists('taxonomy_exists') || !taxonomy_exists($taxonomy)) {
+            return [];
+        }
+        $cache = (bool) apply_filters('rr_sd_term_image_cache', true);
+        $key   = 'rr_sd_shared2_' . $taxonomy . '_' . self::version();
+        if ($cache) {
+            $hit = get_transient($key);
+            if (is_array($hit)) {
+                return $hit;
+            }
+        }
+        $terms = get_terms(['taxonomy' => $taxonomy, 'hide_empty' => false]);
+        $map   = [];
+        if (!is_wp_error($terms) && is_array($terms)) {
+            foreach ($terms as $t) {
+                $map[(int) $t->term_id] = ['name' => (string) $t->name, 'thumb' => (int) get_term_meta($t->term_id, 'thumbnail_id', true), 'parent' => isset($t->parent) ? (int) $t->parent : 0];
+            }
+        }
+        $groups = self::find_shared_thumbnails($map);
+        if ($cache) {
+            set_transient($key, $groups, 6 * HOUR_IN_SECONDS);
+        }
+        return $groups;
+    }
+
+    /**
+     * ID's van alle termen waarvan de categorieafbeelding ook op een andere term staat.
+     * (Een ouder en kind met dezelfde foto tellen ook mee; beide vallen dan terug op de keten.)
+     *
+     * @return array<int,int>
+     */
+    public static function shared_term_ids(string $taxonomy = 'product_cat'): array {
+        $ids = [];
+        foreach (self::shared_thumbnails_report($taxonomy) as $group) {
+            foreach (array_keys($group['terms']) as $term_id) {
+                $ids[(int) $term_id] = (int) $term_id;
+            }
+        }
+        return $ids;
+    }
+
+    // ── Productlijst in het CollectionPage-blok van Yoast (opt-in) ────────
+
+    /** Is de productlijst aan het Yoast-blok toegevoegd tijdens deze aanvraag? */
+    private static $itemlist_done = false;
+
+    public static function itemlist_done(): bool {
+        return self::$itemlist_done;
+    }
+
+    /**
+     * Voegt een ItemList als mainEntity toe aan het eerste CollectionPage-blok in een Yoast-graaf.
+     * Heeft dat blok al een mainEntity, of is er geen CollectionPage, dan blijft alles ongewijzigd
+     * (er wordt niets overschreven of bijgemaakt).
+     *
+     * @param array<int,mixed> $graph
+     * @return array{graph:array<int,mixed>,added:bool}
+     */
+    public static function add_item_list(array $graph, array $item_list): array {
+        foreach ($graph as $i => $piece) {
+            if (!is_array($piece)) {
+                continue;
+            }
+            $type  = $piece['@type'] ?? null;
+            $types = is_array($type) ? $type : [$type];
+            if (!in_array('CollectionPage', $types, true)) {
+                continue;
+            }
+            if (!empty($piece['mainEntity'])) {
+                return ['graph' => $graph, 'added' => false];
+            }
+            $graph[$i]['mainEntity'] = $item_list;
+            return ['graph' => $graph, 'added' => true];
+        }
+        return ['graph' => $graph, 'added' => false];
+    }
+
+    // ── Yoast schema-afbeelding gelijktrekken (opt-in) ───────────────────
+
+    /**
+     * Welke afbeelding hoort als schema-afbeelding bij een term? Dezelfde als de og:image:
+     * de social image uit Yoast als die is ingesteld, anders (alleen als het vullen van lege
+     * social images aan staat) de categorieafbeelding. Anders '' = niets aanpassen.
+     */
+    public static function schema_target_image(bool $fill_enabled, string $own_field, string $resolved): string {
+        if (trim($own_field) !== '') {
+            return trim($own_field);
+        }
+        return $fill_enabled ? trim($resolved) : '';
+    }
+
+    /**
+     * Zet de hoofdafbeelding (ImageObject met "#primaryimage") in een Yoast-schemagraaf op $url.
+     * Yoast kiest zelf een afbeelding (op een categorie meestal de eerste productfoto) en die
+     * wijkt vaak af van de og:image. Breedte, hoogte en bijschrift van de oude afbeelding worden
+     * vervangen door die in $info, of weggelaten: een verkeerde maat is erger dan geen maat.
+     * Een graaf zonder hoofdafbeelding blijft ongewijzigd (er wordt niets bijgemaakt).
+     *
+     * @param array<int,mixed>   $graph
+     * @param array<string,mixed> $info  Optioneel: width, height, caption
+     */
+    public static function align_primary_image(array $graph, string $url, array $info = []): array {
+        if (trim($url) === '') {
+            return $graph;
+        }
+        $changed = false;
+        foreach ($graph as $i => $piece) {
+            if (!is_array($piece)) {
+                continue;
+            }
+            $is_image = ($piece['@type'] ?? null) === 'ImageObject' && strpos((string) ($piece['@id'] ?? ''), '#primaryimage') !== false;
+            if ($is_image) {
+                $piece['url']        = $url;
+                $piece['contentUrl'] = $url;
+                unset($piece['width'], $piece['height'], $piece['caption']);
+                foreach (['width', 'height', 'caption'] as $key) {
+                    if (isset($info[$key]) && $info[$key] !== '' && $info[$key] !== null) {
+                        $piece[$key] = $info[$key];
+                    }
+                }
+                $graph[$i] = $piece;
+                $changed   = true;
+            }
+        }
+        if (!$changed) {
+            return $graph;
+        }
+        foreach ($graph as $i => $piece) {
+            if (is_array($piece) && ($piece['@type'] ?? null) !== 'ImageObject' && !empty($piece['thumbnailUrl'])) {
+                $graph[$i]['thumbnailUrl'] = $url;
+            }
+        }
+        return $graph;
+    }
+
+    /**
+     * Yoast-filter wpseo_schema_graph (opt-in via rr_sd_yoast_schema_image): op categorieën,
+     * tags en andere termen krijgt de hoofdafbeelding in het Yoast-schema dezelfde afbeelding
+     * als de og:image.
+     *
+     * @param array $graph
+     * @return array
+     */
+    public static function yoast_schema_graph($graph, $context = null) {
+        if (!is_array($graph)) {
+            return $graph;
+        }
+        $want_image = get_option('rr_sd_yoast_schema_image', '0') === '1';
+        $want_list  = get_option('rr_sd_yoast_itemlist', '0') === '1';
+        if (!$want_image && !$want_list) {
+            return $graph;
+        }
+        if (!(is_category() || is_tag() || is_tax())) {
+            return $graph;
+        }
+        $term = get_queried_object();
+        if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) {
+            return $graph;
+        }
+        if ($want_image) {
+            $graph = self::align_image_for_term($graph, $term);
+        }
+        if ($want_list && $term->taxonomy === 'product_cat' && class_exists('RR_SD_Builder')) {
+            $list = RR_SD_Builder::build_term_item_list($term, 50);
+            if ($list) {
+                $result = self::add_item_list($graph, $list);
+                $graph  = $result['graph'];
+                if ($result['added']) {
+                    self::$itemlist_done = true;
+                }
+            }
+        }
+        return $graph;
+    }
+
+    /** Hoofdafbeelding van het Yoast-schema gelijktrekken met de og:image (zie schema_target_image). */
+    private static function align_image_for_term(array $graph, $term): array {
+        $own    = (new RR_SD_Term_Image_WP_Source((string) $term->taxonomy))->yoast_image((int) $term->term_id);
+        $fill   = get_option('rr_sd_yoast_social_image', '0') === '1';
+        $target = self::schema_target_image($fill, $own, $fill ? self::for_term($term) : '');
+        if ($target === '') {
+            return $graph;
+        }
+
+        $info = [];
+        $id   = (int) attachment_url_to_postid($target);
+        if ($id > 0) {
+            $alt = trim((string) get_post_meta($id, '_wp_attachment_image_alt', true));
+            $info['caption'] = $alt !== '' ? $alt : trim((string) get_the_title($id));
+            $full = wp_get_attachment_image_src($id, 'full');
+            if (is_array($full) && isset($full[0], $full[1], $full[2]) && $full[0] === $target) {
+                $info['width']  = (int) $full[1];
+                $info['height'] = (int) $full[2];
+            }
+        }
+        return self::align_primary_image($graph, $target, $info);
+    }
+
+    public static function register_hooks(): void {
+        foreach (['created_term', 'edited_term', 'delete_term', 'deleted_post', 'customize_save_after'] as $hook) {
+            add_action($hook, [__CLASS__, 'bump_version']);
+        }
+        add_action('save_post', [__CLASS__, 'on_save_post'], 10, 2);
+        add_filter('wpseo_add_opengraph_images', [__CLASS__, 'yoast_add_social_image']);
+        add_filter('wpseo_schema_graph', [__CLASS__, 'yoast_schema_graph'], 20, 2);
+        foreach (['rr_sd_org_logo', 'wpseo_titles', 'wpseo_taxonomy_meta', 'site_icon', 'rr_sd_term_image_skip_shared'] as $option) {
+            add_action('update_option_' . $option, [__CLASS__, 'bump_version']);
+        }
+    }
+}
+
+class RR_SD_Term_Image_WP_Source implements RR_SD_Term_Image_Source {
+
+    private $taxonomy;
+    private $logo_names = null;
+    private $logo_ids   = null;
+    private $memo       = [];
+
+    public function __construct(string $taxonomy) {
+        $this->taxonomy = $taxonomy;
+    }
+
+    private function size(): string {
+        return (string) apply_filters('rr_sd_term_image_size', 'large');
+    }
+
+    public function yoast_image(int $term_id): string {
+        $all = get_option('wpseo_taxonomy_meta', []);
+        $url = $all[$this->taxonomy][$term_id]['wpseo_opengraph-image'] ?? '';
+        return is_string($url) ? trim($url) : '';
+    }
+
+    private $shared_ids = null;
+
+    public function is_shared_thumbnail(int $term_id): bool {
+        if ($this->shared_ids === null) {
+            $this->shared_ids = RR_SD_Term_Image::shared_term_ids($this->taxonomy);
+        }
+        return isset($this->shared_ids[$term_id]);
+    }
+
+    public function thumbnail_url(int $term_id): string {
+        $thumb_id = (int) get_term_meta($term_id, 'thumbnail_id', true);
+        if (!$thumb_id) {
+            return '';
+        }
+        $url = wp_get_attachment_image_url($thumb_id, $this->size());
+        return $url ? (string) $url : '';
+    }
+
+    public function child_ids_by_size(int $term_id): array {
+        $children = get_terms([
+            'taxonomy'   => $this->taxonomy,
+            'parent'     => $term_id,
+            'hide_empty' => true,
+        ]);
+        if (is_wp_error($children) || !$children) {
+            return [];
+        }
+        $sizes = [];
+        foreach ($children as $child) {
+            // WooCommerce bewaart het aantal incl. subcategorieën in product_count_product_cat.
+            $wc_count = (int) get_term_meta($child->term_id, 'product_count_product_cat', true);
+            $sizes[(int) $child->term_id] = $wc_count > 0 ? $wc_count : (int) $child->count;
+        }
+        arsort($sizes); // stabiel genoeg: gelijke aantallen houden de volgorde van get_terms
+        return array_keys($sizes);
+    }
+
+    public function product_image_urls(int $term_id, int $limit): array {
+        $taxonomy = get_taxonomy($this->taxonomy);
+        if (!$taxonomy || empty($taxonomy->object_type)) {
+            return [];
+        }
+        $ids = get_posts([
+            'post_type'      => $taxonomy->object_type,
+            'post_status'    => 'publish',
+            'posts_per_page' => $limit,
+            'fields'         => 'ids',
+            'orderby'        => ['menu_order' => 'ASC', 'ID' => 'ASC'],
+            'no_found_rows'  => true,
+            'tax_query'      => [[
+                'taxonomy'         => $this->taxonomy,
+                'field'            => 'term_id',
+                'terms'            => $term_id,
+                'include_children' => true,
+            ]],
+            'meta_query'     => [[
+                'key'     => '_thumbnail_id',
+                'compare' => 'EXISTS',
+            ]],
+        ]);
+        $urls = [];
+        foreach ($ids as $post_id) {
+            $url = get_the_post_thumbnail_url($post_id, $this->size());
+            if ($url) {
+                $urls[] = (string) $url;
+            }
+        }
+        return $urls;
+    }
+
+    public function is_logo(string $url): bool {
+        if (isset($this->memo[$url])) {
+            return $this->memo[$url];
+        }
+        $this->load_logos();
+
+        $base   = self::normalize_basename($url);
+        $result = false;
+        if ($base !== '' && isset($this->logo_names[$base])) {
+            $result = true;
+        } elseif ($this->logo_ids) {
+            $id     = (int) attachment_url_to_postid($url);
+            $result = $id > 0 && isset($this->logo_ids[$id]);
+        }
+        // Bestandsnaam met het los woord "logo" (sabe-logo.png, logo_wit.svg), niet "technologo".
+        if (!$result && $base !== '' && preg_match('/(?:^|[^a-z0-9])logo(?:[^a-z0-9]|$)/', $base)) {
+            $result = true;
+        }
+        $result = (bool) apply_filters('rr_sd_term_image_is_logo', $result, $url);
+        return $this->memo[$url] = $result;
+    }
+
+    private function load_logos(): void {
+        if ($this->logo_names !== null) {
+            return;
+        }
+        $this->logo_names = [];
+        $this->logo_ids   = [];
+
+        $urls = [];
+        $ids  = [];
+
+        $own = trim((string) get_option('rr_sd_org_logo', ''));
+        if ($own !== '') {
+            $urls[] = $own;
+        }
+        $titles = get_option('wpseo_titles', []);
+        if (is_array($titles)) {
+            if (!empty($titles['company_logo']))    $urls[] = (string) $titles['company_logo'];
+            if (!empty($titles['company_logo_id'])) $ids[]  = (int) $titles['company_logo_id'];
+        }
+        $ids[] = (int) get_theme_mod('custom_logo');
+        $ids[] = (int) get_option('site_icon');
+
+        $urls = array_merge($urls, (array) apply_filters('rr_sd_term_image_logo_urls', []));
+
+        foreach (array_filter($ids) as $id) {
+            $this->logo_ids[$id] = true;
+            $url = wp_get_attachment_url($id);
+            if ($url) {
+                $urls[] = $url;
+            }
+        }
+        foreach ($urls as $url) {
+            $name = self::normalize_basename((string) $url);
+            if ($name !== '') {
+                $this->logo_names[$name] = true;
+            }
+            $id = (int) attachment_url_to_postid((string) $url);
+            if ($id > 0) {
+                $this->logo_ids[$id] = true;
+            }
+        }
+    }
+
+    /** Bestandsnaam zonder pad, query, formaat-suffix (-300x200, -scaled) en extensie, in kleine letters. */
+    public static function normalize_basename(string $url): string {
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        $name = strtolower(basename($path));
+        $name = preg_replace('/\.[a-z0-9]{2,5}$/', '', $name);
+        $name = preg_replace('/-(?:\d+x\d+|scaled)$/', '', $name);
+        return (string) $name;
+    }
+}

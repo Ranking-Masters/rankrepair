@@ -24,6 +24,16 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         $builder_file  = __DIR__ . '/class-sd-builder.php';
         $scanner_file  = __DIR__ . '/class-sd-scanner.php';
         $template_file = __DIR__ . '/class-sd-template.php';
+        $term_img_file = __DIR__ . '/class-sd-term-image.php';
+        if (file_exists($term_img_file)) {
+            require_once $term_img_file;
+            RR_SD_Term_Image::register_hooks();
+        }
+        $dedupe_file = __DIR__ . '/class-sd-dedupe.php';
+        if (file_exists($dedupe_file)) {
+            require_once $dedupe_file;
+            RR_SD_Dedupe::register_hooks();
+        }
         if (file_exists($builder_file))  require_once $builder_file;
         if (file_exists($scanner_file))  require_once $scanner_file;
         if (file_exists($template_file)) require_once $template_file;
@@ -166,6 +176,72 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                         esc_html__(' — daar vind je per pagina-type een eigen veld.', 'rankrepair') . '</p>',
                 ],
                 [
+                    'name'        => 'rr_sd_yoast_social_image',
+                    'label'       => __('Yoast social image voor categorieën', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — Yoast bepaalt de social image zelf', 'rankrepair'),
+                        '1' => __('Aan — categorieën zonder eigen social image krijgen de categorieafbeelding ({{term_image}})', 'rankrepair'),
+                    ],
+                    'description' => __('Alleen voor categorieën, tags en andere termen waarvan het social-imageveld in Yoast leeg is. Een afbeelding die in Yoast is ingesteld wordt nooit overschreven. Werkt ook direct voor nieuwe categorieën. Vereist Yoast SEO.', 'rankrepair'),
+                ],
+                [
+                    'name'        => 'rr_sd_yoast_schema_image',
+                    'label'       => __('Yoast schema-afbeelding gelijk aan de social image', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — Yoast kiest de afbeelding in zijn schema zelf', 'rankrepair'),
+                        '1' => __('Aan — de hoofdafbeelding in het Yoast-schema van categorieën wordt gelijk aan de og:image', 'rankrepair'),
+                    ],
+                    'description' => __('Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat deze optie aan, dan gebruikt het schema dezelfde afbeelding als de social image: die uit Yoast als hij is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Vereist Yoast SEO.', 'rankrepair'),
+                ],
+                [
+                    'name'        => 'rr_sd_skip_yoast_duplicates',
+                    'label'       => __('Yoast als basis: dubbele schema\'s weglaten', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — RankRepair voegt zijn eigen Organization, BreadcrumbList en WebSite toe, ook als Yoast ze al uitgeeft', 'rankrepair'),
+                        '1' => __('Aan — Yoast is de basis; RankRepair laat die types weg en vult alleen aan wat Yoast niet heeft', 'rankrepair'),
+                    ],
+                    'description' => __('Yoast geeft op elke pagina Organization en BreadcrumbList uit (op de homepage ook WebSite). Staat dit aan, dan laat RankRepair zijn eigen versie van die types weg, ook als die in een template of in eigen JSON-LD staat, zodat er geen dubbele @id\'s of breadcrumbs meer zijn. Wat Yoast niet heeft (ProductGroup, ItemList, FAQPage, eigen types) blijft staan. Let op: de Organization uit je template valt weg, dus staan daar velden in die Yoast niet heeft (sameAs, beoordeling), zet die dan in Yoast. Een losse BreadcrumbList van WooCommerce blijft staan: zet die uit met de instelling "WooCommerce BreadcrumbList uitzetten" hieronder. Een BreadcrumbList van het thema moet je in het thema zelf uitzetten. Vereist Yoast SEO; zonder Yoast doet deze instelling niets.', 'rankrepair'),
+                ],
+                [
+                    'name'        => 'rr_sd_yoast_itemlist',
+                    'label'       => __('Productlijst in het CollectionPage-blok van Yoast', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — RankRepair geeft zelf een ProductGroup uit op categoriepagina\'s', 'rankrepair'),
+                        '1' => __('Aan — de producten (of subcategorieën) komen als lijst in het CollectionPage-blok van Yoast; RankRepair bouwt dan geen eigen ProductGroup', 'rankrepair'),
+                    ],
+                    'description' => __('Een ProductGroup is bedoeld voor één product in varianten, niet voor een categorie met losse producten. Staat dit aan, dan krijgt het CollectionPage-blok van Yoast een lijst met de producten (met prijs en voorraad) of, bij een categorie met subcategorieën, de subcategorieën, maximaal 50. Er komt geen tweede CollectionPage bij. Heb je zelf een CollectionPage in de L1-, L2- of L3-template staan, haal die dan weg, anders blijven er twee. Werkt alleen met Yoast SEO en WooCommerce: met een andere SEO-plugin doet deze instelling niets. Alleen de ProductGroup die RankRepair zelf bouwt verdwijnt; staat er een ProductGroup in je eigen template, dan blijft die staan. Lukt het niet (Yoast geeft geen CollectionPage), dan blijft de eigen ProductGroup staan.', 'rankrepair'),
+                ],
+                [
+                    'name'        => 'rr_sd_term_image_skip_shared',
+                    'label'       => __('Gedeelde categoriefoto negeren bij {{term_image}}', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — de categorieafbeelding wordt altijd gebruikt', 'rankrepair'),
+                        '1' => __('Aan — staat dezelfde afbeelding op meerdere categorieën, dan wordt hij overgeslagen', 'rankrepair'),
+                    ],
+                    'description' => __('Dezelfde foto op twee categorieën (bijvoorbeeld Bedbanken en Opklapbed) zegt niets over elk van beide. Staat dit aan, dan valt {{term_image}} voor zulke categorieën terug op de afbeelding van de grootste subcategorie of het eerste product. De foto in WooCommerce blijft ongemoeid.', 'rankrepair'),
+                ],
+                [
+                    'name'        => 'rr_sd_template_fallback_l1',
+                    'label'       => __('L1-template als terugval voor L2 en L3', 'rankrepair'),
+                    'type'        => 'select',
+                    'default'     => '0',
+                    'options'     => [
+                        '0' => __('Uit — een leeg L2- of L3-template betekent geen eigen JSON-LD', 'rankrepair'),
+                        '1' => __('Aan — is het L2- of L3-template leeg, dan wordt het L1-template gebruikt', 'rankrepair'),
+                    ],
+                    'description' => __('Handig als alle niveaus hetzelfde blok nodig hebben (bijvoorbeeld een CollectionPage met {{term_image}}) en je niet drie keer hetzelfde wilt invullen. Een ingevuld L2- of L3-template gaat altijd voor.', 'rankrepair'),
+                ],
+                [
                     'name'        => 'rr_sd_only_custom',
                     'label'       => __('Modus', 'rankrepair'),
                     'type'        => 'select',
@@ -191,6 +267,21 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
                 ],
             ],
         ];
+        // Alleen op sites met WooCommerce: de losse BreadcrumbList van WooCommerce uitzetten.
+        if (class_exists('WooCommerce')) {
+            $last = count($sections) - 1;
+            $sections[$last]['fields'][] = [
+                'name'        => 'rr_sd_disable_wc_breadcrumb',
+                'label'       => __('WooCommerce BreadcrumbList uitzetten', 'rankrepair'),
+                'type'        => 'select',
+                'default'     => '0',
+                'options'     => [
+                    '0' => __('Uit — WooCommerce geeft zijn eigen BreadcrumbList uit (onderaan de pagina)', 'rankrepair'),
+                    '1' => __('Aan — de losse BreadcrumbList van WooCommerce wordt niet meer uitgegeven', 'rankrepair'),
+                ],
+                'description' => __('Haalt de losse BreadcrumbList-JSON-LD van WooCommerce weg, bijvoorbeeld als Yoast er al een uitgeeft. De zichtbare broodkruimel blijft staan. Alleen dit schemablok verdwijnt; de BreadcrumbList van Yoast of van RankRepair blijft zoals die was. Zet dit niet aan als je SEO-plugin geen eigen BreadcrumbList uitgeeft, want dan heeft de pagina er geen meer.', 'rankrepair'),
+            ];
+        }
         return $sections;
     }
 
@@ -209,11 +300,16 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         // ── Eerst custom JSON-LD parsen zodat we weten welke types al gedekt zijn ──
         $tpl = class_exists('RR_SD_Template') ? new RR_SD_Template() : null;
 
-        $type_opt = 'rr_sd_custom_jsonld_' . $context['type'];
-        $raw      = get_option($type_opt, '');
-        // Backward-compat: als depth-specifieke leeg is, val terug op generieke product_cat
-        if (trim($raw) === '' && strpos($context['type'], 'product_cat_') === 0) {
-            $raw = get_option('rr_sd_custom_jsonld_product_cat', '');
+        // Eerst de template van dit type; leeg → de oude generieke product_cat-template; en met de
+        // instelling "L1-template als terugval" ook de L1-template voor L2 en L3.
+        $raw = '';
+        $l1_fallback = get_option('rr_sd_template_fallback_l1', '0') === '1';
+        $options = class_exists('RR_SD_Template')
+            ? RR_SD_Template::template_option_chain($context['type'], $l1_fallback)
+            : ['rr_sd_custom_jsonld_' . $context['type']];
+        foreach ($options as $option_name) {
+            $raw = get_option($option_name, '');
+            if (trim($raw) !== '') break;
         }
         if ($tpl && trim($raw) !== '') $raw = $tpl->apply($raw, $context);
         $custom = $this->parse_custom_jsonld($raw);
@@ -221,6 +317,14 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         $raw_all = get_option('rr_sd_custom_jsonld_all', '');
         if ($tpl && trim($raw_all) !== '') $raw_all = $tpl->apply($raw_all, $context);
         $custom_all = $this->parse_custom_jsonld($raw_all);
+
+        // Yoast als basis: eigen/template-versies van wat Yoast al uitgeeft weglaten
+        $yoast_types = [];
+        if (class_exists('RR_SD_Dedupe') && RR_SD_Dedupe::enabled()) {
+            $yoast_types = RR_SD_Dedupe::yoast_types();
+            $custom      = RR_SD_Dedupe::drop_duplicates($custom, $yoast_types);
+            $custom_all  = RR_SD_Dedupe::drop_duplicates($custom_all, $yoast_types);
+        }
 
         // Verzamel @types die al door de gebruiker zijn ingevoerd → niet auto-bouwen
         $covered_types = [];
@@ -231,11 +335,27 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
             }
         }
 
+        // Wat Yoast al uitgeeft telt ook als gedekt: dan bouwt RankRepair het niet nog een keer
+        foreach ($yoast_types as $t) {
+            $covered_types[$t] = true;
+        }
+
         // "Alleen eigen JSON" modus → álle auto-build skippen
         $only_custom = get_option('rr_sd_only_custom', '0') === '1';
         if ($only_custom) {
             foreach ($custom as $item)     $graph[] = $item;
             foreach ($custom_all as $item) $graph[] = $item;
+
+            /**
+             * Laat thema's/plugins nodes toevoegen aan de @graph.
+             * Draait bewust vóór de empty-check: juist op pagina's waar RankRepair
+             * zelf niets opbouwt wil een thema vaak alsnog iets toevoegen.
+             *
+             * @param array $graph   Lijst met schema-nodes.
+             * @param array $context Context van de huidige pagina (zie detect_context()).
+             */
+            $graph = apply_filters('rr_sd_graph', $graph, $context);
+
             if (empty($graph)) return;
             $output = ['@context' => 'https://schema.org', '@graph' => $graph];
             echo "\n<!-- RankRepair Structured Data -->\n";
@@ -248,12 +368,12 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         // Organization
         if (get_option('rr_sd_schema_organization', '1') === '1' && empty($covered_types['Organization']) && empty($covered_types['LocalBusiness'])) {
             $org = $builder->build_organization($context);
-            if ($org) $graph[] = $org;
+            if ($org) $graph[] = RR_SD_Builder::drop_empty_values($org);
         }
 
         // WebSite + SearchAction — alleen homepage
         if ($context['type'] === 'home' && get_option('rr_sd_schema_website', '1') === '1' && empty($covered_types['WebSite'])) {
-            $graph[] = $builder->build_website();
+            $graph[] = RR_SD_Builder::drop_empty_values($builder->build_website());
         }
 
         // ── Custom JSON-LD invoegen ──
@@ -263,26 +383,29 @@ class RR_Addon_Structured_Data extends RR_Addon_Base {
         // BreadcrumbList — overal behalve homepage
         if ($context['type'] !== 'home' && get_option('rr_sd_schema_breadcrumb', '1') === '1' && empty($covered_types['BreadcrumbList'])) {
             $bc = $builder->build_breadcrumbs($context);
-            if ($bc) $graph[] = $bc;
+            if ($bc) $graph[] = RR_SD_Builder::drop_empty_values($bc);
         }
 
         // Product — WooCommerce single product
         if ($context['type'] === 'product' && get_option('rr_sd_schema_product', '1') === '1' && empty($covered_types['Product'])) {
             $product = $builder->build_product($context);
-            if ($product) $graph[] = $product;
+            if ($product) $graph[] = RR_SD_Builder::drop_empty_values($product);
         }
 
         // ProductGroup — WC productcategorie (alle dieptes l1/l2/l3)
-        if (strpos($context['type'], 'product_cat') === 0 && get_option('rr_sd_schema_productgroup', '1') === '1' && empty($covered_types['ProductGroup']) && empty($covered_types['ItemList'])) {
+        if (strpos($context['type'], 'product_cat') === 0 && get_option('rr_sd_schema_productgroup', '1') === '1' && empty($covered_types['ProductGroup']) && !(class_exists('RR_SD_Term_Image') && RR_SD_Term_Image::itemlist_done()) && empty($covered_types['ItemList'])) {
             $pg = $builder->build_product_group($context);
-            if ($pg) $graph[] = $pg;
+            if ($pg) $graph[] = RR_SD_Builder::drop_empty_values($pg);
         }
 
         // FAQPage — Gutenberg block of ACF repeater
         if (in_array($context['type'], ['post', 'page'], true) && get_option('rr_sd_schema_faqpage', '1') === '1') {
             $faq = $builder->build_faqpage($context);
-            if ($faq) $graph[] = $faq;
+            if ($faq) $graph[] = RR_SD_Builder::drop_empty_values($faq);
         }
+
+        /** Zie toelichting bij de filter in de "alleen eigen JSON"-modus hierboven. */
+        $graph = apply_filters('rr_sd_graph', $graph, $context);
 
         if (empty($graph)) return;
 

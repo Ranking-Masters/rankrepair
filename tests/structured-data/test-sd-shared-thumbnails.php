@@ -1,0 +1,151 @@
+<?php
+/**
+ * Controle op dezelfde categorieafbeelding bij meerdere categorieën:
+ * de logica (puur) en de weergave in de inspector (met WordPress-vervangers).
+ * Run: php tests/structured-data/test-sd-shared-thumbnails.php
+ */
+define('ABSPATH', true);
+
+$GLOBALS['t'] = ['opts' => [], 'terms' => [], 'meta' => [], 'transients' => []];
+function get_option($n, $d = false) { return $GLOBALS['t']['opts'][$n] ?? $d; }
+function update_option($n, $v, $a = null) { $GLOBALS['t']['opts'][$n] = $v; return true; }
+function apply_filters($tag, $value) { return $value; }
+function wp_json_encode($d, $f = 0) { return json_encode($d, $f); }
+function __($t, $d = null) { return $t; }
+function _e($t, $d = null) { echo $t; }
+function esc_html($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
+function esc_attr($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
+function esc_url($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
+function _n($single, $plural, $n, $d = null) { return $n === 1 ? $single : $plural; }
+function esc_html__($t, $d = null) { return esc_html($t); }
+function esc_textarea($t) { return htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'); }
+function admin_url($p = '') { return 'https://example.test/wp-admin/' . $p; }
+function wp_nonce_field($a = -1) { echo '<input type="hidden" name="_wpnonce" value="x">'; }
+function taxonomy_exists($t) { return $t === 'product_cat'; }
+function get_terms($args = []) { return $GLOBALS['t']['terms']; }
+function is_wp_error($x) { return false; }
+function get_term_meta($id, $key, $single = false) { return $GLOBALS['t']['meta'][$id] ?? ''; }
+function get_edit_term_link($id, $tax) { return "https://example.test/wp-admin/term.php?tag_ID=$id&taxonomy=$tax"; }
+function get_transient($k) { return $GLOBALS['t']['transients'][$k] ?? false; }
+function set_transient($k, $v, $e = 0) { $GLOBALS['t']['transients'][$k] = $v; return true; }
+if (!defined('HOUR_IN_SECONDS')) define('HOUR_IN_SECONDS', 3600);
+
+require __DIR__ . '/../../addons/structured-data/class-sd-template.php';
+require __DIR__ . '/../../addons/structured-data/class-sd-term-image.php';
+require __DIR__ . '/../../addons/structured-data/class-sd-scanner.php';
+
+$fail = 0;
+function ok($cond, $msg) {
+    global $fail;
+    if (!$cond) { fwrite(STDERR, "FAIL: $msg\n"); $fail++; return; }
+    echo "ok: $msg\n";
+}
+
+// ── Logica ──
+$terms = [
+    362 => ['name' => 'Bedbanken', 'thumb' => 7404], 290 => ['name' => 'Opklapbed', 'thumb' => 7404],
+    364 => ['name' => 'Bedbank 140', 'thumb' => 8366], 366 => ['name' => 'Bedbank 2-persoons', 'thumb' => 8366], 365 => ['name' => 'Bedbank 160', 'thumb' => 8366],
+    722 => ['name' => 'Stoffen', 'thumb' => 0], 800 => ['name' => 'Zonder foto', 'thumb' => 0], 801 => ['name' => 'Uniek', 'thumb' => 9001],
+];
+$g = RR_SD_Term_Image::find_shared_thumbnails($terms);
+ok(count($g) === 2, 'twee groepen met een gedeelde afbeelding gevonden');
+ok($g[0]['thumb'] === 8366 && count($g[0]['terms']) === 3, 'grootste groep eerst (drie categorieën met dezelfde foto)');
+ok($g[1]['thumb'] === 7404 && array_values($g[1]['terms']) === ['Bedbanken', 'Opklapbed'], 'tweede groep met de namen van de categorieën');
+ok(RR_SD_Term_Image::find_shared_thumbnails(['1' => ['name' => 'A', 'thumb' => 0], '2' => ['name' => 'B', 'thumb' => 0]]) === [], 'categorieën zonder afbeelding tellen niet als gedeeld');
+ok(RR_SD_Term_Image::find_shared_thumbnails([1 => ['name' => 'A', 'thumb' => 5]]) === [], 'één categorie met een afbeelding is geen groep');
+ok(RR_SD_Term_Image::find_shared_thumbnails([]) === [], 'lege invoer geeft geen groepen');
+ok(RR_SD_Term_Image::find_shared_thumbnails([1 => [], 2 => ['thumb' => '7'], 3 => ['thumb' => 7, 'name' => 'C']]) !== null, 'onvolledige gegevens geven geen fout');
+
+// ── Ouder en kind met dezelfde foto zijn geen dubbele foto ──
+$p = [
+    10 => ['name' => 'Kraftpapier', 'thumb' => 500, 'parent' => 0],
+    11 => ['name' => 'Rollen kraftpapier', 'thumb' => 500, 'parent' => 10],
+];
+ok(RR_SD_Term_Image::find_shared_thumbnails($p) === [], 'ouder en kind met dezelfde foto: geen groep');
+
+$p = [
+    10 => ['name' => 'Tape', 'thumb' => 600, 'parent' => 0],
+    11 => ['name' => 'Verpakkingstape', 'thumb' => 0, 'parent' => 10],
+    12 => ['name' => 'PP tape', 'thumb' => 600, 'parent' => 11],
+];
+ok(RR_SD_Term_Image::find_shared_thumbnails($p) === [], 'opa en kleinkind (met een term ertussen) met dezelfde foto: geen groep');
+
+$p = [
+    10 => ['name' => 'Tape', 'thumb' => 700, 'parent' => 0],
+    11 => ['name' => 'Etiketten', 'thumb' => 700, 'parent' => 0],
+];
+$g = RR_SD_Term_Image::find_shared_thumbnails($p);
+ok(count($g) === 1 && count($g[0]['terms']) === 2, 'twee hoofdcategorieën zonder verband met dezelfde foto: wel een groep');
+
+$p = [
+    10 => ['name' => 'Kraftpapier', 'thumb' => 800, 'parent' => 0],
+    11 => ['name' => 'Rollen kraftpapier', 'thumb' => 800, 'parent' => 10],
+    12 => ['name' => 'Etiketten', 'thumb' => 800, 'parent' => 0],
+];
+$g = RR_SD_Term_Image::find_shared_thumbnails($p);
+ok(count($g) === 1 && count($g[0]['terms']) === 3, 'ouder, kind en een losse categorie met dezelfde foto: wel een groep, alle drie genoemd');
+
+$p = [
+    10 => ['name' => 'Bedkast verticaal', 'thumb' => 900, 'parent' => 1],
+    11 => ['name' => 'Verticaal opklapbed', 'thumb' => 900, 'parent' => 2],
+    1  => ['name' => 'Bedkasten', 'thumb' => 0, 'parent' => 0],
+    2  => ['name' => 'Opklapbed', 'thumb' => 0, 'parent' => 0],
+];
+ok(count(RR_SD_Term_Image::find_shared_thumbnails($p)) === 1, 'twee subcategorieën onder verschillende hoofdcategorieën met dezelfde foto: wel een groep');
+
+$lus = [1 => ['name' => 'A', 'thumb' => 5, 'parent' => 2], 2 => ['name' => 'B', 'thumb' => 5, 'parent' => 1]];
+ok(is_array(RR_SD_Term_Image::find_shared_thumbnails($lus)), 'een lus in de ouder-verwijzingen geeft geen oneindige lus');
+
+// ── WordPress-laag: rapport ──
+function term($id, $name) { return (object) ['term_id' => $id, 'name' => $name]; }
+$GLOBALS['t']['terms'] = [term(362, 'Bedbanken'), term(290, 'Opklapbed'), term(722, 'Stoffen')];
+$GLOBALS['t']['meta']  = [362 => 7404, 290 => 7404, 722 => ''];
+$r = RR_SD_Term_Image::shared_thumbnails_report('product_cat');
+ok(count($r) === 1 && $r[0]['thumb'] === 7404, 'rapport vindt de gedeelde afbeelding op een site');
+ok(RR_SD_Term_Image::shared_thumbnails_report('post_tag') === [], 'onbekende taxonomie (geen WooCommerce) geeft een leeg rapport');
+$GLOBALS['t']['terms'] = [];
+ok(count(RR_SD_Term_Image::shared_thumbnails_report('product_cat')) === 1, 'tweede aanroep komt uit de cache (zelfde versie)');
+$ids = RR_SD_Term_Image::shared_term_ids('product_cat');
+ok(isset($ids[362]) && isset($ids[290]) && !isset($ids[722]) && count($ids) === 2, 'shared_term_ids geeft alleen de categorieën met een gedeelde foto');
+ok(RR_SD_Term_Image::shared_term_ids('post_tag') === [], 'shared_term_ids zonder WooCommerce is leeg');
+
+// ── Weergave in de inspector ──
+set_error_handler(function ($no, $str, $file, $line) { throw new ErrorException($str, 0, $no, $file, $line); });
+$scanner = (new ReflectionClass('RR_SD_Scanner'))->newInstanceWithoutConstructor();
+$method  = new ReflectionMethod('RR_SD_Scanner', 'render_custom_jsonld_box');
+if (PHP_VERSION_ID < 80100) { $method->setAccessible(true); }
+function render_box($scanner, $method): string {
+    ob_start();
+    try { $method->invokeArgs($scanner, ['product_cat_l1', '', 'Productcat. (L1)', ['product_cat_l1' => ['label' => 'L1']]]); }
+    finally { $html = ob_get_clean(); }
+    return $html;
+}
+// Relevantie: de melding staat er alleen als de site de categoriefoto echt gebruikt.
+function fresh_terms() { $GLOBALS['t']['transients'] = []; $GLOBALS['t']['terms'] = [term(362, 'Bedbanken'), term(290, 'Opklapbed')]; $GLOBALS['t']['meta'] = [362 => 7404, 290 => 7404]; }
+function shown($scanner, $method, array $opts) {
+    fresh_terms(); $GLOBALS['t']['opts'] = $opts;
+    try { return [render_box($scanner, $method), '']; } catch (Throwable $e) { return ['', $e->getMessage()]; }
+}
+
+[$html, $err] = shown($scanner, $method, []);
+ok($err === '' && strpos($html, 'rr-sd-shared') === false && strpos($html, 'rr-sd-custom-form') !== false, 'categoriefoto niet in gebruik: geen melding, scherm rendert gewoon' . ($err ? " ($err)" : ''));
+ok(strpos($html, 'ter info') === false, 'geen "ter info"-melding: als er niets mee hoeft, staat er niets');
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_yoast_social_image' => '1']);
+ok($err === '' && strpos($html, 'rr-sd-shared') !== false && strpos($html, 'dezelfde foto in het schema en als social image') !== false, 'Yoast-instelling aan: melding met uitleg dat het gevolgen heeft' . ($err ? " ($err)" : ''));
+ok(strpos($html, 'Bedbanken') !== false && strpos($html, 'Opklapbed') !== false && strpos($html, 'Afbeelding 7404') !== false && strpos($html, 'term.php?tag_ID=362') !== false, 'melding noemt de categorieën, de afbeelding en linkt naar het bewerkscherm');
+ok(strpos($html, '1 groep categorieën heeft') !== false, 'samenvatting noemt het aantal groepen (enkelvoud)');
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_custom_jsonld_product_cat_l1' => '{"image":"{{term_image}}"}']);
+ok($err === '' && strpos($html, 'rr-sd-shared') !== false, '{{term_image}} in een template: melding aanwezig' . ($err ? " ($err)" : ''));
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_term_image_skip_shared' => '1']);
+ok($err === '' && strpos($html, 'rr-sd-shared') !== false, '"gedeelde foto negeren" aan: melding aanwezig' . ($err ? " ($err)" : ''));
+
+[$html, $err] = shown($scanner, $method, ['rr_sd_yoast_social_image' => '1']);
+$GLOBALS['t']['meta'] = [362 => 7404, 290 => 7405]; $GLOBALS['t']['transients'] = [];
+try { $html = render_box($scanner, $method); $err = ''; } catch (Throwable $e) { $html = ''; $err = $e->getMessage(); }
+ok($err === '' && strpos($html, 'rr-sd-shared') === false, 'categoriefoto in gebruik maar niets gedeeld: geen melding' . ($err ? " ($err)" : ''));
+
+echo $fail ? "$fail FAILED\n" : "ALL PASS\n";
+exit($fail ? 1 : 0);

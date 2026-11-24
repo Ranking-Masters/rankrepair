@@ -89,7 +89,9 @@ class RR_SD_Scanner {
                     <div class="notice notice-success" style="margin:0 0 16px;padding:10px 14px"><p><?php echo esc_html($saved_msg); ?></p></div>
                     <?php endif; ?>
 
-                    <?php $this->render_custom_jsonld_box($selected, $custom_value, $types[$selected]['label'] ?? $selected); ?>
+                    <?php $this->render_custom_jsonld_box($selected, $custom_value, $types[$selected]['label'] ?? $selected, $types); ?>
+
+                    <?php $this->render_wc_breadcrumb_hint($schemas); ?>
 
                     <?php if (!empty($suggested)): ?>
                     <div class="rr-sd-suggest">
@@ -116,6 +118,56 @@ class RR_SD_Scanner {
                     <?php endif; ?>
                 </div>
             </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Staan er twee of meer BreadcrumbLists op de pagina, waarvan één van WooCommerce, terwijl de
+     * schakelaar "WooCommerce BreadcrumbList uitzetten" uit staat? Dan is een hint nuttig.
+     *
+     * De BreadcrumbList van WooCommerce herken je aan het ontbreken van een @id op het blok zelf
+     * (Yoast en RankRepair geven er wel een), of aan de bron "WooCommerce" als die is herkend.
+     *
+     * @param array $schemas Uitkomst van scan_url(): lijst van ['data' => node, 'source' => string].
+     */
+    public static function has_wc_breadcrumb_duplicate(array $schemas): bool {
+        if (!class_exists('WooCommerce')) {
+            return false;
+        }
+        if (get_option('rr_sd_disable_wc_breadcrumb', '0') === '1') {
+            return false;
+        }
+        $total = 0;
+        $wc    = false;
+        foreach ($schemas as $schema) {
+            $data = $schema['data'] ?? null;
+            if (!is_array($data) || !isset($data['@type'])) {
+                continue;
+            }
+            $types = is_array($data['@type']) ? $data['@type'] : [$data['@type']];
+            if (!in_array('BreadcrumbList', $types, true)) {
+                continue;
+            }
+            $total++;
+            $source = (string) ($schema['source'] ?? '');
+            if ($source === 'WooCommerce' || (empty($data['@id']) && $source !== 'RankRepair')) {
+                $wc = true;
+            }
+        }
+        return $total >= 2 && $wc;
+    }
+
+    private function render_wc_breadcrumb_hint(array $schemas): void {
+        if (!self::has_wc_breadcrumb_duplicate($schemas)) {
+            return;
+        }
+        ?>
+        <div class="notice notice-warning inline" style="margin:0 0 16px">
+            <p>
+                <?php echo esc_html__('Op deze pagina staan twee BreadcrumbLists, waarvan één van WooCommerce. Zet "WooCommerce BreadcrumbList uitzetten" aan om de losse WooCommerce-versie weg te laten (de zichtbare broodkruimel blijft staan).', 'rankrepair'); ?>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=rankrepair-settings')); ?>"><?php esc_html_e('Naar Instellingen →', 'rankrepair'); ?></a>
+            </p>
         </div>
         <?php
     }
@@ -181,7 +233,7 @@ class RR_SD_Scanner {
     /**
      * Render het "Eigen JSON-LD" paste-veld voor dit pagina-type.
      */
-    private function render_custom_jsonld_box(string $selected, string $value, string $human_label = ''): void {
+    private function render_custom_jsonld_box(string $selected, string $value, string $human_label = '', array $types = []): void {
         if (empty($human_label)) $human_label = $selected;
         // Validatie
         $valid = true; $count = 0;
@@ -209,6 +261,57 @@ class RR_SD_Scanner {
                     <span class="rr-sd-custom-state rr-sd-custom-state--err">✗ <?php _e('Ongeldige JSON', 'rankrepair'); ?></span>
                 <?php endif; ?>
             </summary>
+            <?php
+            // Controle: vaste afbeeldingen in templates die voor meerdere pagina's gelden.
+            $audit_templates = [];
+            foreach (array_keys($types) as $audit_type) {
+                $audit_templates[$audit_type] = (string) get_option('rr_sd_custom_jsonld_' . $audit_type, '');
+            }
+            $audit_templates['all'] = (string) get_option('rr_sd_custom_jsonld_all', '');
+            $audit = class_exists('RR_SD_Template') ? RR_SD_Template::audit_templates($audit_templates) : [];
+            if ($audit): ?>
+            <div class="notice notice-warning inline rr-sd-audit">
+                <p><strong><?php _e('Let op: vaste afbeelding in een template voor meerdere pagina\'s', 'rankrepair'); ?></strong><br>
+                <?php _e('Elke pagina van zo\'n type krijgt dan dezelfde afbeelding. Gebruik {{term_image}} (categorieën), {{featured_image}} (berichten en pagina\'s) of {{product_images}} (producten).', 'rankrepair'); ?></p>
+                <ul style="margin:0 0 .5em 1.2em;list-style:disc">
+                <?php foreach ($audit as $audit_type => $hits): ?>
+                    <?php foreach ($hits as $hit): ?>
+                        <li><code><?php echo esc_html($audit_type); ?></code> → <code><?php echo esc_html($hit['path']); ?></code>: <?php echo esc_html($hit['value']); ?></li>
+                    <?php endforeach; ?>
+                <?php endforeach; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
+
+            <?php
+            // Controle: dezelfde categorieafbeelding op meerdere categorieën (zonder ouder-kindparen).
+            // Alleen tonen als de site de WooCommerce-categoriefoto echt gebruikt: via {{term_image}} in een
+            // template, of via de Yoast- of "gedeelde foto negeren"-instelling. Anders heeft het geen gevolgen
+            // en hoeft niemand er iets mee, dus dan staat er niets.
+            $uses_term_image = get_option('rr_sd_yoast_social_image', '0') === '1' || get_option('rr_sd_term_image_skip_shared', '0') === '1';
+            foreach ($audit_templates as $audit_tpl) {
+                if (strpos((string) $audit_tpl, '{{term_image}}') !== false) { $uses_term_image = true; break; }
+            }
+            $shared = ($uses_term_image && class_exists('RR_SD_Term_Image')) ? RR_SD_Term_Image::shared_thumbnails_report('product_cat') : [];
+            if ($shared): ?>
+            <div class="notice notice-warning inline rr-sd-shared">
+                <p><strong><?php echo esc_html(sprintf(_n('%d groep categorieën heeft dezelfde afbeelding in WooCommerce', '%d groepen categorieën hebben dezelfde afbeelding in WooCommerce', count($shared), 'rankrepair'), count($shared))); ?></strong><br>
+                <?php _e('Deze site gebruikt de categorieafbeelding via {{term_image}} of een Yoast-instelling, dus categorieën met dezelfde foto krijgen dezelfde foto in het schema en als social image. Kies per categorie een eigen afbeelding in WooCommerce, of zet "Gedeelde categoriefoto negeren" aan. Een ouder met dezelfde foto als zijn subcategorie wordt hier niet getoond.', 'rankrepair'); ?></p>
+                <ul style="margin:0 0 .5em 1.2em;list-style:disc">
+                <?php foreach (array_slice($shared, 0, 10) as $group): ?>
+                    <li><?php echo esc_html(sprintf(__('Afbeelding %d staat op:', 'rankrepair'), $group['thumb'])); ?>
+                    <?php $links = [];
+                    foreach ($group['terms'] as $term_id => $term_name) {
+                        $edit = function_exists('get_edit_term_link') ? get_edit_term_link($term_id, 'product_cat') : '';
+                        $links[] = $edit ? '<a href="' . esc_url($edit) . '">' . esc_html($term_name) . '</a>' : esc_html($term_name);
+                    }
+                    echo implode(', ', $links); ?></li>
+                <?php endforeach; ?>
+                </ul>
+                <?php if (count($shared) > 10): ?><p><?php echo esc_html(sprintf(__('… en nog %d groepen.', 'rankrepair'), count($shared) - 10)); ?></p><?php endif; ?>
+            </div>
+            <?php endif; ?>
+
             <form method="post" class="rr-sd-custom-form">
                 <?php wp_nonce_field('rr_sd_custom_' . $selected); ?>
                 <p class="rr-sd-custom-hint">

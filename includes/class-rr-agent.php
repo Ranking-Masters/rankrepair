@@ -791,6 +791,11 @@ class RR_Agent {
             }
         }
 
+        // ── PHP-workers ──────────────────────────────────────────────────────
+        if ( class_exists( 'RR_Php_Workers' ) ) {
+            RR_Php_Workers::render_admin_section();
+        }
+
         if ( ! empty( $last_resp ) ) {
             echo '<h2>' . esc_html__( 'Laatste respons', 'rankrepair' ) . '</h2>';
             echo '<pre style="background:#f3f4f6;padding:12px;border-radius:6px;max-width:800px;overflow:auto">';

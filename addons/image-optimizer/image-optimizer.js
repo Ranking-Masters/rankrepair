@@ -7,15 +7,17 @@
     'use strict';
 
     var RRImg = {
-        allImages:    [],
-        selectedIds:  [],
-        currentIndex: 0,
-        isRunning:    false,
-        isStopped:    false,
-        totalSaved:   0,
-        successCount: 0,
-        errorCount:   0,
-        skippedCount: 0,
+        allImages:      [],
+        selectedIds:    [],
+        exclSelectedIds:[],
+        exclImages:     [],
+        currentIndex:   0,
+        isRunning:      false,
+        isStopped:      false,
+        totalSaved:     0,
+        successCount:   0,
+        errorCount:     0,
+        skippedCount:   0,
 
         // =====================================================================
         // Boot
@@ -26,7 +28,9 @@
             this.bindTableEvents();
             this.bindFooterBar();
             this.bindDisplayScanner();
+            this.bindExclusions();
             this.autoScan();
+            this.refreshExcludedCount();
         },
 
         // =====================================================================
@@ -87,7 +91,7 @@
         autoScan: function () {
             var $tbody = $('#rr-img-tbody');
             $tbody.html(
-                '<tr><td colspan="9" class="rr-img-empty-state">' +
+                '<tr><td colspan="10" class="rr-img-empty-state">' +
                 '<div class="rr-img-empty-spinner"><span class="rr-spin rr-spin--lg"></span>' +
                 '<span>Afbeeldingen laden...</span></div></td></tr>'
             );
@@ -97,7 +101,7 @@
                 nonce:  rrAdmin.nonce
             }, function (response) {
                 if (!response.success) {
-                    $tbody.html('<tr><td colspan="9" class="rr-img-empty-state" style="color:var(--rr-danger)">' +
+                    $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">' +
                         RRImg.esc(response.data || 'Scanfout') + '</td></tr>');
                     return;
                 }
@@ -106,9 +110,9 @@
                 RRImg.renderTable(RRImg.allImages);
                 RRImg.updateStats(response.data);
                 RRImg.updateFooter();
-                $('#rr-img-all-count').text(RRImg.allImages.filter(function (i) { return i.needs_compression; }).length);
+                RRImg.updateAllCount();
             }).fail(function () {
-                $tbody.html('<tr><td colspan="9" class="rr-img-empty-state" style="color:var(--rr-danger)">Verbindingsfout. Herlaad de pagina.</td></tr>');
+                $tbody.html('<tr><td colspan="10" class="rr-img-empty-state" style="color:var(--rr-danger)">Verbindingsfout. Herlaad de pagina.</td></tr>');
             });
         },
 
@@ -128,6 +132,14 @@
             }
         },
 
+        /** "Optimaliseer alles (N)" + de "Afbeeldingen te groot"-stat-kaart, in sync
+         *  houden met RRImg.allImages (bv. meteen na uit-/insluiten, zonder page-reload). */
+        updateAllCount: function () {
+            var count = RRImg.allImages.filter(function (i) { return i.needs_compression; }).length;
+            $('#rr-img-all-count').text(count);
+            $('#rr-img-stat-toolarge').text(count);
+        },
+
         // =====================================================================
         // Table
         // =====================================================================
@@ -137,7 +149,7 @@
             $tbody.empty();
 
             if (!images || images.length === 0) {
-                $tbody.html('<tr><td colspan="9" class="rr-img-empty-state">' +
+                $tbody.html('<tr><td colspan="10" class="rr-img-empty-state">' +
                     '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--rr-gray-300)" stroke-width="1.5"><polyline points="20 6 9 17 4 12"/></svg>' +
                     '<div style="margin-top:8px;color:var(--rr-gray-400)">Alle afbeeldingen zijn al geoptimaliseerd!</div>' +
                     '</td></tr>');
@@ -197,6 +209,13 @@
                     __('Optimaliseer') + '</button>';
             }
 
+            // Uitsluiten — eigen kolom, los van de hoofdactie. Niet tijdens verwerking.
+            var exclHtml = isProcessing ? '' :
+                '<button class="rr-img-excl-col-btn rr-img-exclude-btn" data-id="' + img.id + '" title="' +
+                __('Nooit optimaliseren') + '">' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="6" y1="18" x2="18" y2="6"/></svg>' +
+                '</button>';
+
             var checked = RRImg.selectedIds.indexOf(img.id) !== -1 ? ' checked' : '';
 
             return '<tr id="rr-img-row-' + img.id + '"' + rowBg + '>' +
@@ -225,6 +244,7 @@
                 '</td>' +
                 '<td class="rr-img-td rr-img-td--dim">' + (dimStr ? RRImg.esc(dimStr) : '—') + '</td>' +
                 '<td class="rr-img-td rr-img-td--status">' + statusHtml + '</td>' +
+                '<td class="rr-img-td rr-img-td--excl">' + exclHtml + '</td>' +
                 '<td class="rr-img-td rr-img-td--action" id="rr-img-act-' + img.id + '">' + actionHtml + '</td>' +
                 '</tr>';
         },
@@ -301,6 +321,13 @@
                 RRImg.restoreSingle(parseInt($(this).data('id'), 10));
             });
 
+            // Uitsluiten vanuit de hoofdtabel (bv. handtekening-afbeeldingen)
+            $(document).on('click', '.rr-img-exclude-btn', function () {
+                var id = parseInt($(this).data('id'), 10);
+                if (!confirm('Deze afbeelding nooit meer optimaliseren? Je kunt dit later terugdraaien via "Uitgesloten".')) return;
+                RRImg.excludeImage(id);
+            });
+
             // Export btn (both locations)
             $(document).on('click', '#rr-img-export-btn, #rr-img-export-footer-btn', function () {
                 RRImg.exportReport();
@@ -332,16 +359,25 @@
                 });
                 RRImg.startBulk(toProcess);
             });
+
+            $(document).on('click', '#rr-img-exclude-sel-btn', function () {
+                if (!RRImg.selectedIds.length) return;
+                if (!confirm('Deze ' + RRImg.selectedIds.length + ' afbeelding(en) nooit meer optimaliseren? Je kunt dit later terugdraaien via "Uitgesloten".')) return;
+                RRImg.excludeSelection(RRImg.selectedIds.slice());
+            });
         },
 
         updateFooter: function () {
             var count = RRImg.selectedIds.length;
-            var $selBtn = $('#rr-img-optimize-sel-btn');
-            var $selLbl = $('#rr-img-footer-sel');
-            var $selCnt = $('#rr-img-sel-count');
+            var $selBtn  = $('#rr-img-optimize-sel-btn');
+            var $exclBtn = $('#rr-img-exclude-sel-btn');
+            var $selLbl  = $('#rr-img-footer-sel');
+            var $selCnt  = $('#rr-img-sel-count');
 
             $selCnt.text(count);
+            $('#rr-img-exclude-sel-count').text(count);
             $selBtn.prop('disabled', count === 0);
+            $exclBtn.prop('disabled', count === 0);
 
             if (count > 0) {
                 $selLbl.text(count + ' geselecteerd').show();
@@ -651,8 +687,219 @@
         },
 
         // =====================================================================
+        // Uitsluitingen (bv. handtekening-afbeeldingen die nooit mee mogen doen)
+        // =====================================================================
+
+        bindExclusions: function () {
+            $(document).on('click', '#rr-img-excluded-btn', function () {
+                RRImg.openExclusionsModal();
+            });
+
+            $(document).on('click', '#rr-img-excl-close', function () {
+                $('#rr-img-excl-overlay').hide();
+            });
+
+            // Klik op de donkere achtergrond sluit de modal, klik in de modal zelf niet
+            $(document).on('click', '#rr-img-excl-overlay', function (e) {
+                if (e.target.id === 'rr-img-excl-overlay') $('#rr-img-excl-overlay').hide();
+            });
+
+            $(document).on('click', '.rr-img-excl-restore-btn', function () {
+                var id = parseInt($(this).data('id'), 10);
+                RRImg.unexcludeSelection([id]);
+            });
+
+            $(document).on('click', '#rr-img-excl-add-btn', function () {
+                RRImg.openMediaPickerForExclusion();
+            });
+
+            // Selectie binnen het uitsluitingen-overzicht (voor bulk terugzetten)
+            $(document).on('change', '#rr-img-excl-check-all', function () {
+                var checked = this.checked;
+                $('.rr-img-excl-row-check').prop('checked', checked);
+                RRImg.exclSelectedIds = checked ? RRImg.exclImages.map(function (i) { return i.id; }) : [];
+                RRImg.updateExclSelectionUi();
+            });
+
+            $(document).on('change', '.rr-img-excl-row-check', function () {
+                var id = parseInt($(this).data('id'), 10);
+                if (this.checked) {
+                    if (RRImg.exclSelectedIds.indexOf(id) === -1) RRImg.exclSelectedIds.push(id);
+                } else {
+                    RRImg.exclSelectedIds = RRImg.exclSelectedIds.filter(function (x) { return x !== id; });
+                }
+                RRImg.updateExclSelectionUi();
+            });
+
+            $(document).on('click', '#rr-img-excl-restore-sel-btn', function () {
+                if (!RRImg.exclSelectedIds.length) return;
+                RRImg.unexcludeSelection(RRImg.exclSelectedIds.slice());
+            });
+        },
+
+        refreshExcludedCount: function () {
+            $.post(rrAdmin.ajaxUrl, {
+                action: 'rr_img_excluded_list',
+                nonce:  rrAdmin.nonce
+            }, function (response) {
+                if (response.success) {
+                    $('#rr-img-excluded-count').text(response.data.total);
+                }
+            });
+        },
+
+        /** Sluit één of meerdere afbeeldingen tegelijk uit (rij-knop of "Uitsluiten selectie"). */
+        excludeSelection: function (ids, callback) {
+            $.post(rrAdmin.ajaxUrl, {
+                action:         'rr_img_exclude_bulk',
+                nonce:          rrAdmin.nonce,
+                attachment_ids: ids
+            }, function (response) {
+                if (response.success) {
+                    ids.forEach(function (id) {
+                        RRImg.allImages = RRImg.allImages.filter(function (i) { return i.id !== id; });
+                        $('#rr-img-row-' + id).remove();
+                    });
+                    if (RRImg.selectedIds.length) {
+                        RRImg.selectedIds = RRImg.selectedIds.filter(function (id) { return ids.indexOf(id) === -1; });
+                        RRImg.updateFooter();
+                    }
+                    RRImg.refreshExcludedCount();
+                    RRImg.updateAllCount();
+                    if (typeof callback === 'function') callback();
+                } else {
+                    alert(response.data || 'Fout bij uitsluiten.');
+                }
+            }).fail(function () {
+                alert('Verbindingsfout.');
+            });
+        },
+
+        excludeImage: function (id) {
+            RRImg.excludeSelection([id]);
+        },
+
+        /** Haalt de uitsluiting van één of meerdere afbeeldingen tegelijk weg. */
+        unexcludeSelection: function (ids) {
+            $.post(rrAdmin.ajaxUrl, {
+                action:         'rr_img_unexclude_bulk',
+                nonce:          rrAdmin.nonce,
+                attachment_ids: ids
+            }, function (response) {
+                if (response.success) {
+                    RRImg.openExclusionsModal(); // lijst verversen
+                    RRImg.autoScan();            // kan weer terugkomen in de hoofdlijst
+                } else {
+                    alert(response.data || 'Fout bij terugzetten.');
+                }
+            }).fail(function () {
+                alert('Verbindingsfout.');
+            });
+        },
+
+        openExclusionsModal: function () {
+            var $overlay = $('#rr-img-excl-overlay');
+            var $list    = $('#rr-img-excl-list');
+            RRImg.exclSelectedIds = [];
+            $('#rr-img-excl-check-all').prop('checked', false);
+            $list.html('<div class="rr-img-excl-empty">Laden...</div>');
+            $overlay.css('display', 'flex');
+
+            $.post(rrAdmin.ajaxUrl, {
+                action: 'rr_img_excluded_list',
+                nonce:  rrAdmin.nonce
+            }, function (response) {
+                if (!response.success) {
+                    $list.html('<div class="rr-img-excl-empty">Fout bij laden.</div>');
+                    return;
+                }
+                $('#rr-img-excluded-count').text(response.data.total);
+                RRImg.exclImages = response.data.images || [];
+                RRImg.renderExclusionsList(RRImg.exclImages);
+                RRImg.updateExclSelectionUi();
+            }).fail(function () {
+                $list.html('<div class="rr-img-excl-empty">Verbindingsfout.</div>');
+            });
+        },
+
+        renderExclusionsList: function (images) {
+            var $list = $('#rr-img-excl-list');
+            if (!images || images.length === 0) {
+                $list.html('<div class="rr-img-excl-empty">Nog geen afbeeldingen uitgesloten.</div>');
+                return;
+            }
+            $list.empty();
+            images.forEach(function (img) {
+                var thumb = img.thumb_url
+                    ? '<img src="' + img.thumb_url + '" class="rr-img-excl-thumb" alt="">'
+                    : '<div class="rr-img-excl-thumb rr-img-excl-thumb--empty"></div>';
+                $list.append(
+                    '<div class="rr-img-excl-row">' +
+                        '<input type="checkbox" class="rr-img-checkbox rr-img-excl-row-check" data-id="' + img.id + '">' +
+                        thumb +
+                        '<div class="rr-img-excl-name">' + RRImg.esc(img.file_name || img.title) + '</div>' +
+                        '<button class="rr-img-btn rr-img-btn--outline rr-img-btn--sm rr-img-excl-restore-btn" data-id="' + img.id + '">' +
+                            'Terugzetten' +
+                        '</button>' +
+                    '</div>'
+                );
+            });
+        },
+
+        updateExclSelectionUi: function () {
+            var count = RRImg.exclSelectedIds.length;
+            $('#rr-img-excl-sel-count').text(count);
+            $('#rr-img-excl-restore-sel-btn').prop('disabled', count === 0);
+            $('#rr-img-excl-check-all').prop('checked',
+                count > 0 && count === RRImg.exclImages.length);
+        },
+
+        openMediaPickerForExclusion: function () {
+            if (typeof wp === 'undefined' || !wp.media) {
+                alert('Media-bibliotheek kon niet geladen worden.');
+                return;
+            }
+            var frame = wp.media({
+                title: 'Afbeelding(en) uitsluiten van optimalisatie',
+                library: { type: 'image' },
+                multiple: true,
+                button: { text: 'Uitsluiten' }
+            });
+            frame.on('select', function () {
+                var selection = frame.state().get('selection');
+                var ids = selection.map(function (att) { return att.get('id'); });
+                if (!ids.length) return;
+
+                var alreadyExcludedIds = RRImg.exclImages.map(function (i) { return i.id; });
+                var alreadyCount = ids.filter(function (id) { return alreadyExcludedIds.indexOf(id) !== -1; }).length;
+                if (alreadyCount === 1) {
+                    RRImg.showToast('Deze afbeelding is al uitgesloten.');
+                } else if (alreadyCount > 1) {
+                    RRImg.showToast(alreadyCount + ' van de geselecteerde afbeeldingen waren al uitgesloten.');
+                }
+
+                RRImg.excludeSelection(ids, function () {
+                    RRImg.openExclusionsModal();
+                });
+            });
+            frame.open();
+        },
+
+        // =====================================================================
         // Helpers
         // =====================================================================
+
+        /** Korte, vanzelf verdwijnende melding onderin het scherm (bv. "al uitgesloten"). */
+        showToast: function (message) {
+            $('.rr-img-toast').remove();
+            var $toast = $('<div class="rr-img-toast"></div>').text(message);
+            $('body').append($toast);
+            requestAnimationFrame(function () { $toast.addClass('rr-img-toast--in'); });
+            setTimeout(function () {
+                $toast.removeClass('rr-img-toast--in');
+                setTimeout(function () { $toast.remove(); }, 300);
+            }, 2600);
+        },
 
         formatBytes: function (bytes) {
             if (!bytes || bytes <= 0) return '0 B';

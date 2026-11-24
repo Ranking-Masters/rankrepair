@@ -4,7 +4,7 @@ Tags: seo, meta titles, meta descriptions, pagespeed, optimization
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.1
+Stable tag: 1.9.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -60,6 +60,56 @@ Ga naar de Google Cloud Console, maak een project aan en activeer de PageSpeed I
 Ja! RankRepair is modulair opgebouwd. Je kunt eenvoudig nieuwe add-ons toevoegen door de RR_Addon_Base class te extenden.
 
 == Changelog ==
+
+= 1.9.12 =
+* Nieuw: optionele instelling "WooCommerce BreadcrumbList uitzetten" (standaard uit, alleen zichtbaar met WooCommerce). Haalt de losse BreadcrumbList-JSON-LD van WooCommerce weg, bijvoorbeeld als Yoast er al een uitgeeft; de zichtbare broodkruimel blijft staan. De inspector toont een hint als er twee BreadcrumbLists staan, waarvan één van WooCommerce.
+
+= 1.9.11 =
+* Nieuw: Formulieren Tester ondersteunt JetFormBuilder. De formulieren worden gevonden met hun velden en de pagina waarop ze staan, en de test doet een live inzending met voorbeelddata plus een inzending met lege verplichte velden. Nonce, CSRF, honeypot en captcha van JetFormBuilder worden alleen voor het test-request uitgezet (met een eenmalige token); de veldvalidatie blijft actief. Let op: een test verstuurt de mails en acties die in het formulier staan, naar de ontvanger die daar is ingesteld.
+* Nieuw: optionele instelling "Yoast als basis: dubbele schema's weglaten" (standaard uit). Staat die aan, dan laat RankRepair zijn eigen Organization, BreadcrumbList en WebSite weg als Yoast ze al uitgeeft, zodat er geen dubbele @id's of breadcrumbs meer zijn. Vereist Yoast SEO.
+
+= 1.9.10 =
+* Nieuw: optionele instelling "Productlijst in het CollectionPage-blok van Yoast" (standaard uit). Een ProductGroup is bedoeld voor één product in varianten, niet voor een categorie met losse producten. Staat de instelling aan, dan krijgt het CollectionPage-blok dat Yoast al uitgeeft op een productcategorie een lijst (ItemList) met de subcategorieën, of bij een categorie zonder subcategorieën de producten met prijs en voorraad (maximaal 50). RankRepair bouwt dan geen eigen ProductGroup meer, en er komt geen tweede CollectionPage bij. Werkt alleen met Yoast SEO en WooCommerce. Een ProductGroup in je eigen template blijft staan, en een CollectionPage in je eigen template zorgt voor een dubbele.
+* Nieuw: optionele instelling "Gedeelde categoriefoto negeren bij {{term_image}}" (standaard uit). Staat dezelfde categoriefoto op meerdere categorieën, dan valt {{term_image}} voor die categorieën terug op de grootste subcategorie of het eerste product, zodat niet alle categoriepagina's dezelfde afbeelding in het schema krijgen.
+* Nieuw: optionele instelling "L1-template als terugval voor L2 en L3" (standaard uit). Heeft een categorie van niveau 2 of 3 geen eigen template, dan wordt de L1-template gebruikt in plaats van niets.
+* Wijziging: de melding in de inspector over dezelfde categoriefoto op meerdere categorieën verschijnt alleen nog op sites die {{term_image}} of de Yoast-afbeeldingsinstellingen gebruiken, en toont geen hoofd- en subcategorie-paren meer (daar is dezelfde foto normaal).
+
+= 1.9.9 =
+* Nieuw: optionele instelling "Yoast schema-afbeelding gelijk aan de social image" (standaard uit). Yoast kiest in zijn schema zelf een afbeelding voor een categorie (meestal de eerste productfoto), los van de og:image. Staat de instelling aan, dan krijgt de hoofdafbeelding in het Yoast-schema van categorieën dezelfde afbeelding als de og:image: de social image uit Yoast als die is ingesteld, anders de categorieafbeelding (als "Yoast social image voor categorieën" aan staat). Een graaf zonder hoofdafbeelding blijft ongewijzigd en het logo wordt niet aangepast.
+* Nieuw: de inspector van Structured Data meldt wanneer dezelfde WooCommerce-categorieafbeelding op meerdere categorieën staat, met links naar de categorieën. Het is alleen een melding, er wordt niets aangepast.
+
+= 1.9.8 =
+* Fix: Structured Data — automatisch opgebouwde schema's (Organization, WebSite, BreadcrumbList, Product, ProductGroup, FAQPage) laten lege waarden voortaan weg. Voorheen gaf de ProductGroup van een categorie zonder beschrijving `"description": ""`. Waarden als 0, "0" en false blijven staan. Een eigen JSON-LD wordt niet aangepast.
+
+= 1.9.7 =
+* Fix: Structured Data — het dashboardscherm van de inspector gaf in 1.9.6 een fatale fout ("Undefined variable $types", "array_keys(): Argument #1 must be of type array") door de nieuwe waarschuwing voor vaste afbeeldingen in templates. De website zelf werd er niet door geraakt, alleen het beheerscherm Structured Data. Opgelost, met een test die het scherm echt rendert.
+
+= 1.9.6 =
+* Nieuw: Structured Data — placeholder `{{term_image}}` voor de afbeelding van een categorie. Volgorde: WooCommerce-thumbnail van de categorie; ontbreekt die of is het een logo, dan de afbeelding van de grootste subcategorie, daarna het eerste product. Logo's worden herkend via het RankRepair-logo, het Yoast-bedrijfslogo, het thema-logo, de site-icon en een bestandsnaam met "logo". Het resultaat wordt per categorie bewaard en bij wijzigingen vernieuwd.
+* Nieuw: Structured Data — placeholders die leeg uitkomen laten de hele key weg uit de JSON-LD (geen `"image": ""` meer). Ook een leeg ImageObject-omhulsel en lege lijsten verdwijnen. Templates zonder lege placeholder blijven ongewijzigd.
+* Nieuw: Structured Data — placeholder `{{org_logo}}`. De voorbeeldtemplates hebben bij Organization alleen het logo; de ProductGroup (L2/L3) en de blogcategorie-CollectionPage gebruiken `{{term_image}}`.
+* Wijziging: de automatisch opgebouwde Organization toont de vaste bedrijfsafbeelding (`rr_sd_org_image`) niet meer op categoriepagina's, alleen het logo. Terug te zetten met het filter `rr_sd_org_image_on_term_pages`.
+* Nieuw: Structured Data — waarschuwing in de inspector als een template die voor meerdere pagina's geldt (categorie, product, pagina, bericht, "alle pagina's") een vaste afbeelding bevat.
+* Nieuw: optionele instelling "Yoast social image voor categorieën" (standaard uit). Categorieën zonder eigen social image in Yoast krijgen de categorieafbeelding als og:image; een in Yoast ingestelde afbeelding wordt nooit overschreven.
+* Fix: Structured Data — categoriepagina's met veel producten konden het PHP-geheugen overschrijden zodra een eigen JSON was opgeslagen. Placeholders worden nu alleen gebouwd als de template ze gebruikt, en hasVariant gebruikt een lichte productquery zonder volledige postmeta. Bij categorieën met meer dan 50 producten kan bij gelijke menu_order één product van plek wisselen in hasVariant.
+
+= 1.9.5 =
+* Fix: Malware-scan — WebP/AVIF-beeldconversieregels (ShortPixel e.d.) in .htaccess worden niet meer als `cloaked_redirect` gemeld. Een regel met een User-Agent/Accept-conditie die alleen foto.jpg naar foto.jpg.webp/.avif herschrijft is geen cloaking. Echte cloaking (redirect, extern doel, R/P-flag, ander doel dan een beeld) blijft kritiek. Alle UA/referer-gebonden regels worden nu beoordeeld, niet alleen de eerste.
+
+= 1.9.4 =
+* Nieuw: Structured Data — `rr_sd_graph`-filter waarmee een thema per pagina nodes aan de bestaande @graph kan toevoegen, in plaats van een los <script> in de head. Voorheen was alleen site-brede JSON per contexttype mogelijk. De filter krijgt de paginacontext mee (`type`, `post_id`, enz.) en voegt uit zichzelf niets toe — bestaande sites veranderen dus niet.
+
+= 1.9.3 =
+* Nieuw: Image Optimizer — afbeeldingen uitsluiten van optimalisatie (bv. teamfoto's/handtekeningen die nooit gecomprimeerd/geconverteerd mogen worden). Uitsluiten per rij of in bulk vanuit de hoofdtabel, een overzicht met terugzet-mogelijkheid (los of in bulk), en handmatig toevoegen via de media-bibliotheek.
+* Fix: Image Optimizer — de instellingenbalk en de tabel waren op smalle schermen niet horizontaal scrollbaar, waardoor rechterkolommen (Status, Optimaliseer, Uitsluiten) onbereikbaar konden zijn.
+* Fix: Image Optimizer — "Optimaliseer alles (N)" en de statkaart "Nog te optimaliseren" konden een ander aantal tonen dan de daadwerkelijke lijst; beide zijn nu altijd consistent met wat er verwerkt wordt.
+
+= 1.9.2 =
+* Fix: malware-scan meldde ten onrechte "verdacht PHP-bestand" voor macOS zip-metadata (__MACOSX/._*) die na een migratie via een op een Mac gemaakte/uitgepakte back-up in uploads terecht was gekomen. Deze AppleDouble-bestanden bevatten geen uitvoerbare code en worden nu genegeerd.
+
+= 1.9.1 =
+* Fix: malware-scan meldde ten onrechte "cloaking" bij elke user-agent/referer-conditionele RewriteRule in .htaccess, ook zonder daadwerkelijke substitutie — LiteSpeed Cache's eigen mobile/webp-vary-blokken triggerden dit. Vereist nu een echte substitutie/redirect voordat het als cloaking gemeld wordt.
+* Fix: malware-scan meldde ten onrechte "verdacht PHP-bestand" voor bekende databestanden van Sucuri Security (uploads/sucuri/) en MC4WP: Mailchimp for WP (uploads/mailchimp-for-wp/debug-log.php). Toegevoegd aan de allowlist.
 
 = 1.9.0 =
 * Interne Links fase 2: goedgekeurde suggesties worden nu echt in de content geplaatst.

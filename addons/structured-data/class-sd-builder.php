@@ -10,6 +10,44 @@ if (!defined('ABSPATH')) {
 
 class RR_SD_Builder {
 
+    /**
+     * Haalt lege waarden uit een automatisch opgebouwde schema-node: lege tekst, null en lege
+     * lijsten/objecten (op elk niveau). Een lege waarde is nutteloos of ongeldig in schema.org
+     * ("description": "" bij een categorie zonder beschrijving). 0, "0" en false blijven staan.
+     * Lijsten blijven lijsten (opnieuw genummerd). Alleen voor wat RankRepair zelf bouwt; een
+     * eigen JSON van de gebruiker wordt niet aangepast.
+     */
+    public static function drop_empty_values(array $node): array {
+        $is_list = $node === [] || array_keys($node) === range(0, count($node) - 1);
+        $out     = [];
+        foreach ($node as $key => $value) {
+            if (is_array($value)) {
+                $value = self::drop_empty_values($value);
+                if ($value === []) continue;
+            } elseif ($value === null || (is_string($value) && trim($value) === '')) {
+                continue;
+            }
+            if ($is_list) {
+                $out[] = $value;
+            } else {
+                $out[$key] = $value;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Mag de vaste bedrijfsafbeelding (rr_sd_org_image) bij de Organization van deze pagina?
+     * Niet op term-pagina's (productcategorieën, blogcategorieën, tags). Aan te passen met
+     * het filter rr_sd_org_image_on_term_pages.
+     */
+    public static function org_image_allowed(array $context): bool {
+        if (empty($context['term'])) {
+            return true;
+        }
+        return (bool) apply_filters('rr_sd_org_image_on_term_pages', false, $context);
+    }
+
     public function build_organization(array $context): ?array {
         $name = trim(get_option('rr_sd_org_name', '') ?: get_bloginfo('name'));
         if ($name === '') return null;
@@ -27,8 +65,10 @@ class RR_SD_Builder {
         $logo = trim(get_option('rr_sd_org_logo', ''));
         if ($logo) $org['logo'] = $logo;
 
+        // Op term-pagina's (categorieën) hoort bij de Organization alleen het logo: een vaste
+        // bedrijfsafbeelding zou daar op elke categorie dezelfde foto als "afbeelding van de pagina" geven.
         $image = trim(get_option('rr_sd_org_image', ''));
-        if ($image) $org['image'] = $image;
+        if ($image && self::org_image_allowed($context)) $org['image'] = $image;
 
         $desc = trim(get_option('rr_sd_org_description', ''));
         if ($desc) $org['description'] = $desc;
@@ -326,26 +366,171 @@ class RR_SD_Builder {
         }
 
         // Leaf categorie: haal echte WooCommerce producten op met prijzen
-        if (!function_exists('wc_get_products')) return $schema;
-
-        $products = wc_get_products([
-            'category' => [$term->slug],
-            'status'   => 'publish',
-            'limit'    => 50,
-            'orderby'  => 'menu_order',
-            'order'    => 'ASC',
-        ]);
-
-        if (empty($products)) return $schema;
+        $rows = self::light_products($term->slug, 50);
+        if (empty($rows)) return $schema;
 
         $variants = [];
-        foreach ($products as $product) {
-            $variants[] = $this->wc_product_to_variant($product, $group_id, $term);
+        foreach ($rows as $row) {
+            $variants[] = self::light_row_to_variant($row, $group_id, $term);
         }
-        if (!empty($variants)) {
-            $schema['hasVariant'] = $variants;
-        }
+        $schema['hasVariant'] = $variants;
         return $schema;
+    }
+
+    /**
+     * Bouwt een schema.org ItemList uit lijstitems. Een item met 'product' wordt een ListItem met een
+     * Product (naam, url, afbeelding, prijs en voorraad); anders een ListItem met url, naam en afbeelding
+     * (voor subcategorieën). Lege invoer geeft null, zodat er geen lege lijst in het schema komt.
+     *
+     * @param array<int,array{url?:string,name?:string,image?:string,product?:array}> $entries
+     */
+    public static function item_list_from_entries(array $entries): ?array {
+        $elements = [];
+        $position = 0;
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) continue;
+            if (!empty($entry['product']) && is_array($entry['product'])) {
+                $item = ['@type' => 'ListItem', 'position' => ++$position, 'item' => $entry['product']];
+            } elseif (!empty($entry['url'])) {
+                $item = ['@type' => 'ListItem', 'position' => ++$position, 'url' => (string) $entry['url']];
+                if (!empty($entry['name']))  $item['name']  = (string) $entry['name'];
+                if (!empty($entry['image'])) $item['image'] = (string) $entry['image'];
+            } else {
+                continue;
+            }
+            $elements[] = $item;
+        }
+        if (!$elements) return null;
+        return ['@type' => 'ItemList', 'numberOfItems' => count($elements), 'itemListElement' => $elements];
+    }
+
+    /** Product-node voor in een lijst: zoals een variant, maar zonder verwijzing naar een ProductGroup. */
+    public static function product_item_from_row(array $row): array {
+        $product = self::light_row_to_variant($row, '', (object) ['name' => '', 'slug' => '']);
+        unset($product['isVariantOf']);
+        return $product;
+    }
+
+    /**
+     * ItemList voor een categoriepagina: de subcategorieën als de categorie er heeft, anders de
+     * producten (zelfde keuze en zelfde grens van 50 als de ProductGroup).
+     */
+    public static function build_term_item_list($term, int $limit = 50): ?array {
+        if (!is_object($term) || empty($term->term_id) || empty($term->taxonomy)) return null;
+
+        $children = get_terms(['taxonomy' => $term->taxonomy, 'parent' => $term->term_id, 'hide_empty' => false]);
+        $entries  = [];
+        if (!is_wp_error($children) && !empty($children)) {
+            foreach (array_slice(array_values($children), 0, $limit) as $child) {
+                $thumb = function_exists('get_term_meta') ? (int) get_term_meta($child->term_id, 'thumbnail_id', true) : 0;
+                $img   = $thumb ? wp_get_attachment_image_url($thumb, 'medium') : '';
+                $link  = get_term_link($child);
+                $entries[] = ['url' => is_wp_error($link) ? '' : (string) $link, 'name' => (string) $child->name, 'image' => $img ? (string) $img : ''];
+            }
+            return self::item_list_from_entries($entries);
+        }
+        foreach (self::light_products((string) $term->slug, $limit) as $row) {
+            $entries[] = ['product' => self::product_item_from_row($row)];
+        }
+        return self::item_list_from_entries($entries);
+    }
+
+    /**
+     * Lichte productlijst voor hasVariant: alleen de velden die het schema nodig heeft.
+     *
+     * wc_get_products() laadt per product de volledige postmeta (op sites met veel
+     * ACF-velden ~1000 rijen per product, tientallen MB bij 50 producten) en liet
+     * categoriepagina's met veel producten het PHP-geheugen overschrijden. Hier
+     * halen we de producten op zonder meta-cache en lezen we de vier benodigde
+     * meta-keys met één query.
+     */
+    public static function light_products(string $term_slug, int $limit): array {
+        global $wpdb;
+
+        $ids = get_posts([
+            'post_type'              => 'product',
+            'post_status'            => 'publish',
+            'posts_per_page'         => $limit,
+            'fields'                 => 'ids',
+            'orderby'                => ['menu_order' => 'ASC', 'title' => 'ASC'],
+            'no_found_rows'          => true,
+            'suppress_filters'       => false, // zoals wc_get_products(): taal-/WPML-filters blijven werken
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+            'tax_query'              => [[
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => $term_slug,
+            ]],
+        ]);
+        if (empty($ids)) return [];
+        $ids = array_map('intval', $ids);
+        $in  = implode(',', $ids);
+
+        $posts = [];
+        foreach ($wpdb->get_results("SELECT ID, post_title, post_excerpt FROM {$wpdb->posts} WHERE ID IN ($in)") as $p) {
+            $posts[(int) $p->ID] = $p;
+        }
+        $meta = [];
+        $keys = "'_sku','_price','_stock_status','_thumbnail_id'";
+        foreach ($wpdb->get_results("SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ($in) AND meta_key IN ($keys)") as $m) {
+            $meta[(int) $m->post_id][$m->meta_key] = $m->meta_value;
+        }
+
+        $rows = [];
+        foreach ($ids as $id) {
+            if (!isset($posts[$id])) continue;
+            $rows[] = [
+                'id'      => $id,
+                'name'    => (string) $posts[$id]->post_title,
+                'excerpt' => (string) $posts[$id]->post_excerpt,
+                'sku'     => (string) ($meta[$id]['_sku'] ?? ''),
+                'price'   => $meta[$id]['_price'] ?? '',
+                'stock'   => (string) ($meta[$id]['_stock_status'] ?? 'instock'),
+                'thumb'   => (int) ($meta[$id]['_thumbnail_id'] ?? 0),
+                'url'     => get_permalink($id),
+            ];
+        }
+        return $rows;
+    }
+
+    /**
+     * Product-variant (zelfde uitvoer als wc_product_to_variant) uit een rij van light_products().
+     */
+    public static function light_row_to_variant(array $row, string $group_id, $group_term): array {
+        $image = $row['thumb'] ? wp_get_attachment_image_url($row['thumb'], 'medium') : '';
+
+        $variant = [
+            '@type'       => 'Product',
+            'name'        => $row['name'],
+            'description' => wp_strip_all_tags($row['excerpt'] ?: $row['name']),
+            'sku'         => $row['sku'] ?: 'product-' . $row['id'],
+            'url'         => $row['url'],
+        ];
+        if ($image) $variant['image'] = $image;
+
+        $variant['isVariantOf'] = [
+            '@type'          => 'ProductGroup',
+            '@id'            => $group_id,
+            'name'           => $group_term->name,
+            'productGroupID' => $group_term->slug,
+        ];
+
+        if ($row['price'] !== '' && $row['price'] !== null) {
+            $currency = function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'EUR';
+            $variant['offers'] = [
+                '@type'           => 'Offer',
+                'url'             => $row['url'],
+                'priceCurrency'   => $currency,
+                'price'           => number_format((float) $row['price'], 2, '.', ''),
+                'availability'    => $row['stock'] !== 'outofstock'
+                    ? 'https://schema.org/InStock'
+                    : 'https://schema.org/OutOfStock',
+                'priceValidUntil' => date('Y-12-31', strtotime('+2 years')),
+            ];
+        }
+
+        return $variant;
     }
 
     /**

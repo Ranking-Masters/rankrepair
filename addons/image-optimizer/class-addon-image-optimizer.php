@@ -75,6 +75,13 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
         // Display-size scanner (oversized for displayed dimensions)
         add_action('wp_ajax_rr_img_ds_scan',    [$this, 'ajax_ds_scan']);
         add_action('wp_ajax_rr_img_ds_resize',  [$this, 'ajax_ds_resize']);
+
+        // Uitsluitingen (bv. handtekening-afbeeldingen die nooit geoptimaliseerd mogen worden)
+        add_action('wp_ajax_rr_img_exclude',        [$this, 'ajax_exclude']);
+        add_action('wp_ajax_rr_img_unexclude',      [$this, 'ajax_unexclude']);
+        add_action('wp_ajax_rr_img_excluded_list',  [$this, 'ajax_excluded_list']);
+        add_action('wp_ajax_rr_img_exclude_bulk',   [$this, 'ajax_exclude_bulk']);
+        add_action('wp_ajax_rr_img_unexclude_bulk', [$this, 'ajax_unexclude_bulk']);
     }
 
     // =========================================================================
@@ -141,6 +148,106 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
     }
 
     // =========================================================================
+    // UITSLUITINGEN
+    // =========================================================================
+
+    /**
+     * Sluit een afbeelding permanent uit van optimalisatie (bv. een handtekening-
+     * afbeelding die nooit gecomprimeerd/geconverteerd mag worden). Wordt zowel
+     * vanuit een rij in de hoofdtabel aangeroepen als vanuit de media-library-picker
+     * in het uitsluitingen-overzicht.
+     */
+    public function ajax_exclude() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+        $attachment_id = isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0;
+        if (!$attachment_id || 'attachment' !== get_post_type($attachment_id)) {
+            wp_send_json_error(__('Ongeldig attachment ID.', 'rankrepair'));
+        }
+        update_post_meta($attachment_id, '_jic_excluded', 1);
+        wp_send_json_success();
+    }
+
+    /** Haalt de uitsluiting van een afbeelding weg — komt weer gewoon mee in de scan. */
+    public function ajax_unexclude() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+        $attachment_id = isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0;
+        if (!$attachment_id) {
+            wp_send_json_error(__('Ongeldig attachment ID.', 'rankrepair'));
+        }
+        delete_post_meta($attachment_id, '_jic_excluded');
+        wp_send_json_success();
+    }
+
+    /** Lijst van alle momenteel uitgesloten afbeeldingen, voor het uitsluitingen-overzicht. */
+    public function ajax_excluded_list() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+
+        $query = new WP_Query([
+            'post_type'      => 'attachment',
+            'post_mime_type' => 'image',
+            'post_status'    => 'inherit',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'meta_query'     => [
+                ['key' => '_jic_excluded', 'value' => '1'],
+            ],
+        ]);
+
+        $images = [];
+        foreach ($query->posts as $id) {
+            $file_path = get_attached_file($id);
+            $images[]  = [
+                'id'        => $id,
+                'title'     => get_the_title($id),
+                'file_name' => $file_path ? basename($file_path) : '',
+                'thumb_url' => wp_get_attachment_image_url($id, 'thumbnail') ?: '',
+            ];
+        }
+        wp_send_json_success(['images' => $images, 'total' => count($images)]);
+    }
+
+    /** Sluit in één keer een selectie afbeeldingen uit (bv. vanuit de hoofdtabel). */
+    public function ajax_exclude_bulk() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+        $ids = isset($_POST['attachment_ids']) ? (array) wp_unslash($_POST['attachment_ids']) : [];
+        $ids = array_unique(array_filter(array_map('absint', $ids)));
+        $count = 0;
+        foreach ($ids as $id) {
+            if ('attachment' === get_post_type($id)) {
+                update_post_meta($id, '_jic_excluded', 1);
+                $count++;
+            }
+        }
+        wp_send_json_success(['count' => $count]);
+    }
+
+    /** Haalt in één keer de uitsluiting van een selectie afbeeldingen weg. */
+    public function ajax_unexclude_bulk() {
+        check_ajax_referer('rr_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Geen toestemming.', 'rankrepair'));
+        }
+        $ids = isset($_POST['attachment_ids']) ? (array) wp_unslash($_POST['attachment_ids']) : [];
+        $ids = array_unique(array_filter(array_map('absint', $ids)));
+        foreach ($ids as $id) {
+            delete_post_meta($id, '_jic_excluded');
+        }
+        wp_send_json_success(['count' => count($ids)]);
+    }
+
+    // =========================================================================
     // ENQUEUE ASSETS
     // =========================================================================
 
@@ -148,6 +255,10 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
         if (strpos($hook, 'rankrepair-image-optimizer') === false) {
             return;
         }
+
+        // Nodig voor de media-library-picker in het uitsluitingen-overzicht
+        // (handmatig een afbeelding toevoegen die niet in de scanlijst staat).
+        wp_enqueue_media();
 
         $css_ver = filemtime(RR_PLUGIN_DIR . 'addons/image-optimizer/image-optimizer.css') ?: RR_VERSION;
         $js_ver  = filemtime(RR_PLUGIN_DIR . 'addons/image-optimizer/image-optimizer.js')  ?: RR_VERSION;
@@ -228,11 +339,18 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = '_jic_compressed' AND meta_value = '1'"
         );
 
+        // Uitgesloten afbeeldingen (bv. handtekeningen) tellen niet mee als "te
+        // optimaliseren" — anders klopt de knop "Optimaliseer alles (N)" niet meer
+        // met wat er daadwerkelijk in de scanlijst/verwerking terechtkomt.
         $too_large = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p
              LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_jic_compressed'
              WHERE p.post_type = 'attachment' AND p.post_mime_type LIKE 'image/%'
-             AND p.post_status = 'inherit' AND (pm.meta_value IS NULL OR pm.meta_value = '0')"
+             AND p.post_status = 'inherit' AND (pm.meta_value IS NULL OR pm.meta_value = '0')
+             AND NOT EXISTS (
+                 SELECT 1 FROM {$wpdb->postmeta} pme
+                 WHERE pme.post_id = p.ID AND pme.meta_key = '_jic_excluded' AND pme.meta_value = '1'
+             )"
         ));
 
         $orig_sizes  = array_map('intval', (array) $wpdb->get_col("SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_jic_original_size'"));
@@ -285,9 +403,9 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                     <div class="rr-img-stat-sub rr-img-stat-sub--green" id="rr-img-stat-total-sub">—</div>
                 </div>
                 <div class="rr-img-stat-card">
-                    <div class="rr-img-stat-label"><?php _e('Afbeeldingen te groot', 'rankrepair'); ?></div>
+                    <div class="rr-img-stat-label"><?php _e('Nog te optimaliseren', 'rankrepair'); ?></div>
                     <div class="rr-img-stat-number rr-img-stat-number--red" id="rr-img-stat-toolarge"><?php echo esc_html($too_large); ?></div>
-                    <div class="rr-img-stat-sub"><?php printf(__('boven %s', 'rankrepair'), size_format($this->options['max_file_size'])); ?></div>
+                    <div class="rr-img-stat-sub"><?php _e('nog niet geoptimaliseerd', 'rankrepair'); ?></div>
                 </div>
                 <div class="rr-img-stat-card">
                     <div class="rr-img-stat-label"><?php _e('Al geoptimaliseerd', 'rankrepair'); ?></div>
@@ -355,6 +473,40 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                         <span class="rr-img-toggle__thumb"></span>
                     </button>
                 </div>
+                <div class="rr-img-filter-bar__divider"></div>
+
+                <!-- Uitsluitingen -->
+                <div class="rr-img-filter-group">
+                    <button id="rr-img-excluded-btn" class="rr-img-btn rr-img-btn--outline" type="button">
+                        🚫 <?php _e('Uitgesloten', 'rankrepair'); ?> (<span id="rr-img-excluded-count">0</span>)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Uitsluitingen-overlay -->
+            <div id="rr-img-excl-overlay" class="rr-img-excl-overlay" style="display:none">
+                <div class="rr-img-excl-modal">
+                    <div class="rr-img-excl-modal__header">
+                        <div class="rr-img-excl-modal__title"><?php _e('Uitgesloten afbeeldingen', 'rankrepair'); ?></div>
+                        <div class="rr-img-excl-modal__sub"><?php _e('Deze afbeeldingen worden nooit meegenomen in de optimalisatie.', 'rankrepair'); ?></div>
+                        <button id="rr-img-excl-close" class="rr-img-excl-modal__close" type="button" aria-label="<?php esc_attr_e('Sluiten', 'rankrepair'); ?>">&times;</button>
+                    </div>
+                    <div class="rr-img-excl-modal__toolbar">
+                        <button id="rr-img-excl-add-btn" class="rr-img-btn rr-img-btn--green rr-img-btn--sm" type="button">
+                            + <?php _e('Afbeelding toevoegen', 'rankrepair'); ?>
+                        </button>
+                        <label class="rr-img-excl-selectall">
+                            <input type="checkbox" id="rr-img-excl-check-all" class="rr-img-checkbox">
+                            <?php _e('Alles selecteren', 'rankrepair'); ?>
+                        </label>
+                        <button id="rr-img-excl-restore-sel-btn" class="rr-img-btn rr-img-btn--outline rr-img-btn--sm" disabled>
+                            <?php _e('Terugzetten selectie', 'rankrepair'); ?> (<span id="rr-img-excl-sel-count">0</span>)
+                        </button>
+                    </div>
+                    <div id="rr-img-excl-list" class="rr-img-excl-modal__list">
+                        <div class="rr-img-excl-empty"><?php _e('Laden...', 'rankrepair'); ?></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Table Card -->
@@ -390,33 +542,36 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                     </div>
                 </div>
 
-                <table class="rr-img-table">
-                    <thead>
-                        <tr class="rr-img-table__hrow">
-                            <th class="rr-img-th rr-img-th--check">
-                                <input type="checkbox" id="rr-img-check-all" class="rr-img-checkbox">
-                            </th>
-                            <th class="rr-img-th"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Huidig', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Na optimalisatie', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Besparing', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Afmetingen', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"><?php _e('Status', 'rankrepair'); ?></th>
-                            <th class="rr-img-th"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rr-img-tbody">
-                        <tr>
-                            <td colspan="9" class="rr-img-empty-state" id="rr-img-empty">
-                                <div class="rr-img-empty-spinner">
-                                    <span class="rr-spin rr-spin--lg"></span>
-                                    <span><?php _e('Afbeeldingen laden...', 'rankrepair'); ?></span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="rr-img-table-scroll">
+                    <table class="rr-img-table">
+                        <thead>
+                            <tr class="rr-img-table__hrow">
+                                <th class="rr-img-th rr-img-th--check">
+                                    <input type="checkbox" id="rr-img-check-all" class="rr-img-checkbox">
+                                </th>
+                                <th class="rr-img-th"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Huidig', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Na optimalisatie', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Besparing', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Afmetingen', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"><?php _e('Status', 'rankrepair'); ?></th>
+                                <th class="rr-img-th rr-img-th--excl"><?php _e('Uitsluiten', 'rankrepair'); ?></th>
+                                <th class="rr-img-th"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rr-img-tbody">
+                            <tr>
+                                <td colspan="10" class="rr-img-empty-state" id="rr-img-empty">
+                                    <div class="rr-img-empty-spinner">
+                                        <span class="rr-spin rr-spin--lg"></span>
+                                        <span><?php _e('Afbeeldingen laden...', 'rankrepair'); ?></span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- ============================================ -->
@@ -451,20 +606,22 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                     <span id="rr-img-ds-savings">—</span>
                 </div>
 
-                <table class="rr-img-table" id="rr-img-ds-table" style="display:none;">
-                    <thead>
-                        <tr>
-                            <th style="width: 60px;"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
-                            <th><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
-                            <th><?php _e('Werkelijke afm.', 'rankrepair'); ?></th>
-                            <th><?php _e('Weergegeven', 'rankrepair'); ?></th>
-                            <th><?php _e('Verhouding', 'rankrepair'); ?></th>
-                            <th><?php _e('Voorgesteld', 'rankrepair'); ?></th>
-                            <th style="width: 140px;"><?php _e('Actie', 'rankrepair'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="rr-img-ds-tbody"></tbody>
-                </table>
+                <div class="rr-img-table-scroll">
+                    <table class="rr-img-table" id="rr-img-ds-table" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;"><?php _e('Voorbeeld', 'rankrepair'); ?></th>
+                                <th><?php _e('Bestandsnaam', 'rankrepair'); ?></th>
+                                <th><?php _e('Werkelijke afm.', 'rankrepair'); ?></th>
+                                <th><?php _e('Weergegeven', 'rankrepair'); ?></th>
+                                <th><?php _e('Verhouding', 'rankrepair'); ?></th>
+                                <th><?php _e('Voorgesteld', 'rankrepair'); ?></th>
+                                <th style="width: 140px;"><?php _e('Actie', 'rankrepair'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rr-img-ds-tbody"></tbody>
+                    </table>
+                </div>
 
                 <div id="rr-img-ds-empty" style="padding: 20px; text-align:center; color:#9ca3af;">
                     <?php _e('Klik op "Scan pagina(s)" om te beginnen.', 'rankrepair'); ?>
@@ -486,6 +643,9 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                 <span class="rr-img-footer-sel" id="rr-img-footer-sel" style="display:none"></span>
                 <button class="rr-img-btn rr-img-btn--outline" id="rr-img-export-footer-btn">
                     <?php _e('Rapport exporteren', 'rankrepair'); ?>
+                </button>
+                <button class="rr-img-btn rr-img-btn--outline" id="rr-img-exclude-sel-btn" disabled>
+                    🚫 <?php _e('Uitsluiten selectie', 'rankrepair'); ?> (<span id="rr-img-exclude-sel-count">0</span>)
                 </button>
                 <button class="rr-img-btn rr-img-btn--green" id="rr-img-optimize-sel-btn" disabled>
                     ⚡ <?php _e('Optimaliseer selectie', 'rankrepair'); ?> (<span id="rr-img-sel-count">0</span>)
@@ -529,21 +689,37 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
             'fields'         => 'ids',
         ];
 
+        // Uitgesloten afbeeldingen (bv. handtekeningen) mogen nooit in de scanlijst
+        // verschijnen, ongeacht modus — vandaar als aparte AND-groep toegevoegd.
+        $not_excluded = [
+            'relation' => 'OR',
+            ['key' => '_jic_excluded', 'compare' => 'NOT EXISTS'],
+            ['key' => '_jic_excluded', 'value' => '0'],
+        ];
+
         if ($target_mime) {
             // Format-conversion mode: show every attachment whose current mime
             // isn't the target — _jic_compressed flag is ignored on purpose.
             $args['meta_query'] = [
-                'relation' => 'OR',
-                ['key' => '_jic_compressed', 'compare' => 'NOT EXISTS'],
-                ['key' => '_jic_compressed', 'value' => '0'],
-                ['key' => '_jic_compressed', 'value' => '1'],
+                'relation' => 'AND',
+                [
+                    'relation' => 'OR',
+                    ['key' => '_jic_compressed', 'compare' => 'NOT EXISTS'],
+                    ['key' => '_jic_compressed', 'value' => '0'],
+                    ['key' => '_jic_compressed', 'value' => '1'],
+                ],
+                $not_excluded,
             ];
         } else {
             // Origineel mode: existing behaviour — only uncompressed images.
             $args['meta_query'] = [
-                'relation' => 'OR',
-                ['key' => '_jic_compressed', 'compare' => 'NOT EXISTS'],
-                ['key' => '_jic_compressed', 'value' => '0'],
+                'relation' => 'AND',
+                [
+                    'relation' => 'OR',
+                    ['key' => '_jic_compressed', 'compare' => 'NOT EXISTS'],
+                    ['key' => '_jic_compressed', 'value' => '0'],
+                ],
+                $not_excluded,
             ];
         }
 
@@ -608,11 +784,15 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
                 'file_name'         => basename($file_path),
                 'thumb_url'         => $thumb_url ?: '',
                 'mime_type'         => $mime_type,
-                // In a format-conversion mode, every non-target-format image is
-                // a candidate — even those already under max_file_size — because
-                // PNG → WebP usually still saves significantly on disk.
-                'needs_compression' => ($file_size > $this->options['max_file_size'])
-                    || ($target_mime && $mime_type !== $target_mime),
+                // Elke afbeelding die de query hierboven al oplevert is per definitie
+                // nog niet gemarkeerd als gecomprimeerd (of, in conversiemodus, nog
+                // niet in het doelformaat) — dat is de enige eligibiliteitseis. De
+                // bestandsgrootte t.o.v. max_file_size bepaalt niet meer of een
+                // afbeelding in de lijst/teller meetelt, alleen nog (in
+                // compress_image()) of er daadwerkelijk gecomprimeerd wordt of dat
+                // 'ie als 'skipped' gemarkeerd wordt — zo blijven lijst, teller en
+                // "Optimaliseer alles" altijd consistent.
+                'needs_compression' => true,
                 'width'             => $width,
                 'height'            => $height,
                 'new_width'         => $new_w,
@@ -924,6 +1104,12 @@ class RR_Addon_Image_Optimizer extends RR_Addon_Base {
     }
 
     public function compress_image($file_path, $attachment_id = 0, $convert_to_jpg = null, $convert_to_webp = null) {
+        // Harde blokkade, ongeacht via welke weg deze functie wordt aangeroepen
+        // (handmatig, bulk, of de auto-compress-upload-hook): een uitgesloten
+        // afbeelding (bv. een handtekening) mag nooit geoptimaliseerd worden.
+        if ($attachment_id > 0 && get_post_meta($attachment_id, '_jic_excluded', true)) {
+            return new WP_Error('excluded', __('Deze afbeelding is uitgesloten van optimalisatie.', 'rankrepair'));
+        }
         if (!file_exists($file_path)) { return new WP_Error('file_not_found', __('Bestand niet gevonden.', 'rankrepair')); }
         $original_size = filesize($file_path);
         $max_size = $this->options['max_file_size'];
